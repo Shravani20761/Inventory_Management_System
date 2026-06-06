@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="180" viewBox="0 0 280 180">
+  <rect width="280" height="180" rx="12" fill="#faf5ff"/>
+  <rect x="40" y="50" width="200" height="80" rx="8" fill="#6B21D8" opacity="0.15"/>
+  <text x="140" y="98" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" font-weight="700" fill="#6B21D8">LUMINOUS</text>
+  <text x="140" y="125" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" fill="#64748b">Inverter</text>
+</svg>

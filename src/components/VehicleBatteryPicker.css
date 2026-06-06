@@ -1,0 +1,113 @@
+/* Dependent vehicle / bike selects — modern, responsive */
+.vb-wrap {
+  margin-top: 0.75rem;
+  padding: 1rem 1.125rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.06) 0%, rgba(15, 23, 42, 0.04) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+}
+
+.vb-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.75rem;
+}
+
+.vb-title span {
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: #94a3b8;
+}
+
+.vb-grid {
+  display: grid;
+  gap: 0.875rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .vb-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 960px) {
+  .vb-grid.vb-grid--car {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.vb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.vb-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.vb-select {
+  width: 100%;
+  appearance: none;
+  padding: 0.6rem 2.25rem 0.6rem 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: #0f172a;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.vb-select:hover:not(:disabled) {
+  border-color: #cbd5e1;
+}
+
+.vb-select:focus {
+  outline: none;
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2);
+}
+
+.vb-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background-color: #f8fafc;
+}
+
+.vb-hint {
+  margin-top: 0.75rem;
+  font-size: 0.6875rem;
+  color: #94a3b8;
+  line-height: 1.45;
+}
+
+.vb-compat {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #166534;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.vb-err {
+  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+  color: #b91c1c;
+}

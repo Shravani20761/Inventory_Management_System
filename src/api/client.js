@@ -1,0 +1,496 @@
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const TOKEN_KEY = "batterypro_token";
+const USER_KEY = "batterypro_user";
+
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function getStoredUser() {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setSession(token, user) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+  if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+  else localStorage.removeItem(USER_KEY);
+}
+
+export function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+async function request(path, options = {}) {
+  const token = getToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (e) {
+    const wrapped = new Error(
+      "Cannot reach API server. Run: npm run dev (starts API on port 3001 + frontend). " + (e.message || ""),
+      { cause: e },
+    );
+    throw wrapped;
+  }
+
+  if (res.status === 401) {
+    clearSession();
+    window.dispatchEvent(new CustomEvent("auth:logout"));
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    const msg = err.error || res.statusText || "Request failed";
+    if (res.status === 502 || res.status === 503) {
+      throw new Error(
+        "API server not responding (Bad Gateway). Stop all terminals, then run: npm run dev — wait until you see 'BatteryPro API running at http://localhost:3001'."
+      );
+    }
+    const e = new Error(msg, { cause: err });
+    if (err.details) e.details = err.details;
+    throw e;
+  }
+  return res.json();
+}
+
+export const api = {
+  health: () => request("/health"),
+
+  login: (email, password) =>
+    request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+
+  profile: () => request("/auth/profile"),
+
+  getAll: () => request("/sync/all"),
+  saveAll: (data) => request("/sync/all", { method: "PUT", body: JSON.stringify(data) }),
+
+  inventory: {
+    list: () => request("/inventory"),
+    stats: () => request("/inventory/stats"),
+    create: (item) => request("/inventory", { method: "POST", body: JSON.stringify(item) }),
+    update: (id, item) => request(`/inventory/${id}`, { method: "PUT", body: JSON.stringify(item) }),
+    remove: (id) => request(`/inventory/${id}`, { method: "DELETE" }),
+    bulk: (items) => request("/inventory/bulk", { method: "POST", body: JSON.stringify({ items }) }),
+  },
+
+  products: {
+    list: () => request("/products"),
+    get: (id) => request(`/products/${id}`),
+    create: (item) => request("/products", { method: "POST", body: JSON.stringify(item) }),
+    update: (id, item) => request(`/products/${id}`, { method: "PUT", body: JSON.stringify(item) }),
+    remove: (id) => request(`/products/${id}`, { method: "DELETE" }),
+    bulk: (items) => request("/products/bulk", { method: "POST", body: JSON.stringify({ items }) }),
+  },
+
+  purchases: {
+    list: () => request("/purchases"),
+    create: (record) => request("/purchases", { method: "POST", body: JSON.stringify(record) }),
+    update: (id, record) => request(`/purchases/${id}`, { method: "PUT", body: JSON.stringify(record) }),
+    remove: (id) => request(`/purchases/${id}`, { method: "DELETE" }),
+  },
+
+  purchaseManagement: {
+    list: (params = {}) => {
+      const qs = new URLSearchParams(
+        Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== "")),
+      ).toString();
+      return request(`/purchase-management${qs ? `?${qs}` : ""}`);
+    },
+    get: (id) => request(`/purchase-management/${encodeURIComponent(id)}`),
+    create: (payload) =>
+      request("/purchase-management", { method: "POST", body: JSON.stringify(payload) }),
+    addPayment: (id, payload) =>
+      request(`/purchase-management/${encodeURIComponent(id)}/payments`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    updateCheque: (id, chequeId, status) =>
+      request(`/purchase-management/${encodeURIComponent(id)}/cheques/${chequeId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    dashboard: () => request("/purchase-management/dashboard"),
+    outstandingReport: () => request("/purchase-management/reports/outstanding"),
+    monthlyReport: (month) =>
+      request(`/purchase-management/reports/monthly${month ? `?month=${encodeURIComponent(month)}` : ""}`),
+    vendorLedger: (vendorName) =>
+      request(`/purchase-management/reports/vendor/${encodeURIComponent(vendorName)}`),
+    runReminders: (dryRun = false) =>
+      request(`/purchase-management/reminders/run${dryRun ? "?dryRun=true" : ""}`, { method: "GET" }),
+  },
+
+  sales: {
+    list: () => request("/sales"),
+    create: (record) => request("/sales", { method: "POST", body: JSON.stringify(record) }),
+    update: (id, record) => request(`/sales/${id}`, { method: "PUT", body: JSON.stringify(record) }),
+    remove: (id) => request(`/sales/${id}`, { method: "DELETE" }),
+  },
+
+  quotations: {
+    list: () => request("/quotations"),
+    deleteAll: () => request("/quotations", { method: "DELETE" }),
+    create: (record) => request("/quotations", { method: "POST", body: JSON.stringify(record) }),
+    update: (id, record) => request(`/quotations/${id}`, { method: "PUT", body: JSON.stringify(record) }),
+    setStatus: (id, status) =>
+      request(`/quotations/${encodeURIComponent(id)}/status`, {
+        method: "PUT",
+        body: JSON.stringify({ status }),
+      }),
+  },
+
+  invoices: {
+    list: () => request("/invoices"),
+    create: (record) => request("/invoices", { method: "POST", body: JSON.stringify(record) }),
+    update: (id, record) => request(`/invoices/${id}`, { method: "PUT", body: JSON.stringify(record) }),
+  },
+
+  accounts: {
+    _qs: (params = {}) =>
+      new URLSearchParams(
+        Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== "")),
+      ).toString(),
+    dashboard(params) { return request(`/accounts/dashboard?${this._qs(params)}`); },
+    salesReport(params) { return request(`/accounts/reports/sales?${this._qs(params)}`); },
+    purchaseReport(params) { return request(`/accounts/reports/purchase?${this._qs(params)}`); },
+    expenseReport(params) { return request(`/accounts/reports/expense?${this._qs(params)}`); },
+    inventoryReport(params) { return request(`/accounts/reports/inventory?${this._qs(params)}`); },
+    gstReport(params) { return request(`/accounts/reports/gst?${this._qs(params)}`); },
+    profitLossReport(params) { return request(`/accounts/reports/profit-loss?${this._qs(params)}`); },
+    listExpenses(category) { return request(`/accounts/expenses${category ? `?category=${encodeURIComponent(category)}` : ""}`); },
+    createExpense(payload) { return request("/accounts/expenses", { method: "POST", body: JSON.stringify(payload) }); },
+    deleteExpense(id) { return request(`/accounts/expenses/${encodeURIComponent(id)}`, { method: "DELETE" }); },
+    getCaProfile() { return request("/accounts/ca-profile"); },
+    saveCaProfile(payload) { return request("/accounts/ca-profile", { method: "PUT", body: JSON.stringify(payload) }); },
+    generateReport(type, params) { return request(`/accounts/generate/${encodeURIComponent(type)}?${this._qs(params)}`, { method: "POST" }); },
+    generatePackage(params) { return request(`/accounts/generate/package?${this._qs(params)}`, { method: "POST" }); },
+    deliveryStatus() { return request("/accounts/delivery/status"); },
+    emailToCa(payload) { return request("/accounts/send/email", { method: "POST", body: JSON.stringify(payload) }); },
+    whatsappToCa(payload) { return request("/accounts/send/whatsapp", { method: "POST", body: JSON.stringify(payload) }); },
+  },
+
+  vehicles: {
+    brands: ({ vehicleType, q = "" }) => {
+      const p = new URLSearchParams({ vehicleType, q });
+      return request(`/vehicles/brands?${p}`);
+    },
+    models: ({ vehicleType, brand, q = "" }) => {
+      const p = new URLSearchParams({ vehicleType, brand, q });
+      return request(`/vehicles/models?${p}`);
+    },
+    fuels: ({ vehicleType, brand, model }) => {
+      const p = new URLSearchParams({ vehicleType, brand, model });
+      return request(`/vehicles/fuels?${p}`);
+    },
+    compatibleBatteries: ({ vehicleType, brand, model, fuelType = "" }) => {
+      const p = new URLSearchParams({ vehicleType, brand, model, fuelType });
+      return request(`/vehicles/compatible-batteries?${p}`);
+    },
+  },
+
+  previewQuotationOptions: async (requirements) => {
+    const body = JSON.stringify(requirements);
+    const paths = ["/quotations/preview-options", "/preview-quotation-options"];
+    let lastErr;
+    for (const p of paths) {
+      try {
+        return await request(p, { method: "POST", body });
+      } catch (e) {
+        lastErr = e;
+        if (!e.message?.includes("Bad Gateway") && !e.message?.includes("Cannot reach")) throw e;
+      }
+    }
+    throw lastErr;
+  },
+
+  generateQuotation: (requirements) =>
+    request("/generate-quotation", { method: "POST", body: JSON.stringify(requirements) }),
+
+  saveRecommendationSheet: (payload) =>
+    request("/recommendations", { method: "POST", body: JSON.stringify(payload) }),
+
+  listRecommendations: () => request("/recommendations"),
+
+  finalizeQuotation: (payload) =>
+    request("/recommendations/finalize-quotation", { method: "POST", body: JSON.stringify(payload) }),
+
+  createQuotationFromSheet: (payload) =>
+    request("/recommendations/finalize-quotation", { method: "POST", body: JSON.stringify(payload) }),
+
+  updateQuotation: ({ id, ...body }) =>
+    request(`/quotations/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(body) }),
+
+  generateFinalQuotationPdf: (id, body = {}) =>
+    request(`/quotations/${encodeURIComponent(id)}/generate-pdf`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+
+  sendFinalQuotationWhatsApp: (id, body = {}) =>
+    request(`/quotations/${encodeURIComponent(id)}/whatsapp`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+
+  approveAndSendFinalQuotationWhatsApp: (id, body = {}) =>
+    request(`/quotations/${encodeURIComponent(id)}/approve-send-whatsapp`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+
+  listFinalQuotations: () => request("/quotations"),
+
+  setQuotationStatus: (id, status) =>
+    request(`/quotations/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    }),
+
+  generateInvoice: (invoice) =>
+    request("/generate-invoice", { method: "POST", body: JSON.stringify(invoice) }),
+
+  prepareInvoiceFromQuotation: (quotation, selectedOption) =>
+    request("/invoices/prepare-from-quotation", {
+      method: "POST",
+      body: JSON.stringify({ quotation, selectedOption }),
+    }),
+
+  recommendCombo: (requirements) =>
+    request("/recommend-combo", { method: "POST", body: JSON.stringify(requirements) }),
+
+  reports: {
+    profitLoss: () => request("/reports/profit-loss"),
+    lowStock: () => request("/reports/low-stock"),
+    salesSummary: () => request("/reports/sales-summary"),
+  },
+
+  documents: {
+    quotationPdf: (id) => request(`/documents/quotations/${id}/pdf`, { method: "POST" }),
+    sendQuotationWhatsApp: (id) => request(`/documents/quotations/${id}/whatsapp`, { method: "POST" }),
+  },
+
+  uploadExcel: async (file, options = {}) => {
+    const preview = options.preview === true;
+    const form = new FormData();
+    if (options.importType != null && String(options.importType).trim() !== "") {
+      form.append("importType", String(options.importType).trim());
+    }
+    form.append("file", file);
+    const p = preview ? "/upload/excel/preview" : "/upload/excel";
+    const token = getToken();
+    const res = await fetch(`${API_BASE}${p}`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (res.status === 401) {
+      clearSession();
+      window.dispatchEvent(new CustomEvent("auth:logout"));
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || "Upload failed");
+    }
+    return res.json();
+  },
+
+  /** Category-scoped inventory API paths (list + create). */
+  inventoryCategoryPath: (section) => {
+    const map = {
+      Car: "/car-batteries",
+      Truck: "/truck-batteries",
+      Bike: "/bike-batteries",
+      Inverter: "/inverters",
+      "Inverter+Battery": "/inv-combos",
+      "Home Inverter Battery": "/home-inv-battery",
+      Trolley: "/trolleys",
+      "Lithium Ion Battery": "/lithium-ion-batteries",
+    };
+    return map[section] || null;
+  },
+
+  listInventoryCategory: (section) => {
+    const path = api.inventoryCategoryPath(section);
+    if (!path) throw new Error(`No category list route for "${section}".`);
+    return request(path);
+  },
+
+  createInventoryCategory: (section, payload) => {
+    const path = api.inventoryCategoryPath(section);
+    if (!path) throw new Error(`No category create route for "${section}".`);
+    return request(path, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  uploadInventoryCategory: async (section, file) => {
+    if (!file) throw new Error("No file selected");
+    const base = api.inventoryCategoryPath(section);
+    const path = base ? `${base}/upload` : null;
+    if (!path) {
+      throw new Error(`No category upload route for "${section}". Pick a product tab first.`);
+    }
+    const form = new FormData();
+    form.append("file", file);
+    const token = getToken();
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (res.status === 401) {
+      clearSession();
+      window.dispatchEvent(new CustomEvent("auth:logout"));
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || "Upload failed");
+    }
+    return res.json();
+  },
+
+  /**
+   * Upload a combo row image to Cloudinary; server saves the HTTPS URL on `inv_battery_combos`.
+   * @param {string} mongoId - MongoDB `_id` of the combo document (24-char hex).
+   * @param {File} file
+   * @param {"inverterImage"|"batteryImage"|"brandLogo"} imageField
+   */
+  uploadInvComboImage: async (mongoId, file, imageField = "inverterImage") => {
+    if (!mongoId || !file) throw new Error("Combo id and image file are required");
+    const field = String(imageField).trim();
+    if (!["inverterImage", "batteryImage", "brandLogo"].includes(field)) {
+      throw new Error("imageField must be inverterImage, batteryImage, or brandLogo");
+    }
+    const form = new FormData();
+    form.append("file", file);
+    form.append("imageField", field);
+    const token = getToken();
+    const res = await fetch(`${API_BASE}/inv-combos/${encodeURIComponent(String(mongoId))}/upload-image`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (res.status === 401) {
+      clearSession();
+      window.dispatchEvent(new CustomEvent("auth:logout"));
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || "Image upload failed");
+    }
+    return res.json();
+  },
+
+  branches: {
+    list: () => request("/stock-transfers/branches"),
+  },
+
+  stockTransfers: {
+    list: (params = {}) => {
+      const q = new URLSearchParams();
+      if (params.direction) q.set("direction", params.direction);
+      if (params.status) q.set("status", params.status);
+      const qs = q.toString();
+      return request(`/stock-transfers${qs ? `?${qs}` : ""}`);
+    },
+    create: (payload) => request("/stock-transfers", { method: "POST", body: JSON.stringify(payload) }),
+    action: (id, action, body = {}) =>
+      request(`/stock-transfers/${encodeURIComponent(id)}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action, ...body }),
+      }),
+    branchDashboard: () => request("/stock-transfers/branch-dashboard"),
+  },
+
+  inventorySearch: {
+    search: (type, params = {}) => {
+      const endpoint = String(type || "").replace(/^\/+/, "");
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v != null && String(v).trim() !== "") q.set(k, String(v));
+      });
+      const qs = q.toString();
+      return request(`/inventory/search/${endpoint}${qs ? `?${qs}` : ""}`);
+    },
+    battery: (params = {}) => {
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v != null && String(v).trim() !== "") q.set(k, String(v));
+      });
+      const qs = q.toString();
+      return request(`/inventory/search/battery${qs ? `?${qs}` : ""}`);
+    },
+    inverter: (params = {}) => {
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v != null && String(v).trim() !== "") q.set(k, String(v));
+      });
+      const qs = q.toString();
+      return request(`/inventory/search/inverter${qs ? `?${qs}` : ""}`);
+    },
+    carBattery: (params = {}) => {
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v != null && String(v).trim() !== "") q.set(k, String(v));
+      });
+      const qs = q.toString();
+      return request(`/inventory/search/car-battery${qs ? `?${qs}` : ""}`);
+    },
+    bikeBattery: (params = {}) => {
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v != null && String(v).trim() !== "") q.set(k, String(v));
+      });
+      const qs = q.toString();
+      return request(`/inventory/search/bike-battery${qs ? `?${qs}` : ""}`);
+    },
+    combo: (params = {}) => {
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v != null && String(v).trim() !== "") q.set(k, String(v));
+      });
+      const qs = q.toString();
+      return request(`/inventory/search/combo${qs ? `?${qs}` : ""}`);
+    },
+  },
+
+  /** @deprecated Use api.inventorySearch.search(type, params) */
+  searchGlobalInventory: (params = {}) => {
+    const type = params.inventoryType || params.type || "battery";
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== "") q.set(k, String(v));
+    });
+    const qs = q.toString();
+    return request(`/inventory/search/${type}${qs ? `?${qs}` : ""}`);
+  },
+
+  /** @deprecated Use api.inventorySearch */
+  multiBranchStock: (params = {}) => api.inventorySearch.search(params.type || "battery", params),
+};
+
+export async function loadFromApi() {
+  return api.getAll();
+}
+
+export async function isApiAvailable() {
+  try {
+    await api.health();
+    return true;
+  } catch {
+    return false;
+  }
+}

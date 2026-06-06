@@ -1,0 +1,44 @@
+{
+  "cars": {
+    "Hyundai": {
+      "Creta": ["Petrol", "Diesel", "Turbo Petrol"],
+      "Venue": ["Petrol", "Diesel"],
+      "i20": ["Petrol", "Diesel"],
+      "Exter": ["Petrol", "CNG"]
+    },
+    "Maruti Suzuki": {
+      "Swift": ["Petrol", "CNG"],
+      "Baleno": ["Petrol", "CNG"],
+      "Brezza": ["Petrol", "CNG"],
+      "Dzire": ["Petrol", "CNG", "Diesel"]
+    },
+    "Honda": {
+      "City": ["Petrol", "Hybrid"],
+      "Amaze": ["Petrol", "Diesel", "CNG"],
+      "Elevate": ["Petrol"]
+    },
+    "Toyota": {
+      "Innova Crysta": ["Petrol", "Diesel"],
+      "Fortuner": ["Petrol", "Diesel"],
+      "Glanza": ["Petrol", "CNG"]
+    },
+    "Tata": {
+      "Nexon": ["Petrol", "Diesel", "EV"],
+      "Punch": ["Petrol", "CNG"],
+      "Harrier": ["Petrol", "Diesel"]
+    },
+    "Mahindra": {
+      "Scorpio N": ["Petrol", "Diesel"],
+      "XUV700": ["Petrol", "Diesel"],
+      "Bolero": ["Diesel"]
+    }
+  },
+  "bikes": {
+    "Honda": ["Activa 6G", "Activa 125", "Dio 125", "Shine", "Unicorn"],
+    "Hero": ["Splendor Plus", "HF Deluxe", "Passion Pro", "Xtreme 160R", "Mavrick 440"],
+    "TVS": ["Jupiter", "NTorq 125", "Apache RTR 160", "Apache RTR 200", "Raider"],
+    "Bajaj": ["Pulsar NS200", "Pulsar 150", "CT 125", "Dominar 400", "Chetak Electric"],
+    "Yamaha": ["Fascino 125", "RayZR", "MT-15", "R15"],
+    "Suzuki": ["Access 125", "Burgman Street", "Gixxer SF 250"]
+  }
+}
