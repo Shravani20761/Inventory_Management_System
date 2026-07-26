@@ -1,83 +1,45 @@
-# BatteryPro — Smart Inventory & Quotation System
+# Battery Inventory Management
 
-Rule-based battery/inverter quotation engine with React + Tailwind, Express, MongoDB, Puppeteer PDF, **Meta WhatsApp Cloud API**, and **Cloudinary** (invoices only).
+Split for Hostinger: **frontend** (static) + **backend** (Node.js) deploy separately.
 
-## Features
+## Structure
 
-- **Inventory** — products with Ah, VA, brands, stock, Excel import
-- **Smart quotations** — flat type, backup hours, budget, preferred brand
-- **3–6 dynamic options** from live inventory + rule engine
-- **Quotation PDFs** — temporary files in `server/generated/` (auto-delete after 24h)
-- **Invoice PDFs** — permanent storage on Cloudinary
-- **WhatsApp** — Meta Cloud API for quotation & invoice delivery
+```text
+frontend/          React + Vite UI (deploy static dist/)
+  src/             Live app
+  legacy/          Old battery.jsx prototype (not deployed)
+backend/           Express + MongoDB API (deploy Node.js)
+  models/ routes/  Live Invoice / Product / Quotation stack
+  legacy/          Old CommonJS /server prototype (not started)
+docs/
+docker-compose.yml
+```
 
-## Run locally
+## Quick start (local)
 
-```powershell
-cd Inventory_management
-$env:NODE_OPTIONS="--use-system-ca"
+```bash
 npm install
-```
-
-Copy `.env.example` → `.env` and set:
-
-```env
-MONGODB_URI=mongodb+srv://USER:PASS@cluster.mongodb.net/batterypro
-PORT=3001
-PUBLIC_BASE_URL=https://your-ngrok-url.ngrok-free.app
-VITE_API_URL=/api
-
-META_ACCESS_TOKEN=...
-META_PHONE_NUMBER_ID=...
-META_VERIFY_TOKEN=...
-
-CLOUDINARY_CLOUD_NAME=...
-CLOUDINARY_API_KEY=...
-CLOUDINARY_API_SECRET=...
-```
-
-> **Quotations:** Meta must fetch PDFs from a **public HTTPS** URL. Use [ngrok](https://ngrok.com) and set `PUBLIC_BASE_URL` when testing locally.
-
-```powershell
+npm run install:all
+# Configure backend/.env (see backend/.env.example)
 npm run dev
 ```
 
-Open http://localhost:5173 — Tailwind UI with React Router. Classic UI: http://localhost:5173/classic
+- Web: http://localhost:5173  
+- API: http://localhost:3001/api/health  
 
-## API endpoints
+## Docker
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/preview-quotation-options` | Preview recommendation options |
-| POST | `/api/generate-quotation` | Quotation + temp PDF + Meta WhatsApp + DB |
-| POST | `/api/generate-invoice` | Invoice + stock + Cloudinary + Meta WhatsApp |
-| GET | `/api/webhooks/whatsapp` | Meta webhook verification |
-| GET | `/api/vehicles/brands` | Autocomplete: distinct brands (`vehicleType`, optional `q`) |
-| GET | `/api/vehicles/models` | Distinct models for a brand (`vehicleType`, `brand`, optional `q`) |
-| GET | `/api/vehicles/fuels` | Four-wheeler: distinct fuels (`vehicleType`, `brand`, `model`) |
-| GET | `/api/vehicles/compatible-batteries` | Resolve `batteryInventory` rows by vehicle + fuel |
+See [docs/DOCKER.md](docs/DOCKER.md).
 
-Car / bike **quotations** use MongoDB collections **`vehicleCompatibility`** (brand/model/fuel → `compatibleBatteryCodes`) and **`batteryInventory`** (SKU stock/pricing by `batteryCode`). Vehicle labels are never read from battery rows.
-
-Run `npm run seed:vehicle-batteries` for a minimal Hyundai Creta + Honda Activa demo (requires `MONGODB_URI`).
-
-**Vehicle UI catalog:** dependent brand/model dropdowns load from `src/data/vehicleBrandModels.json` (cars: brand → model → fuels; bikes: brand → models). Edit that file to extend the list without code changes.
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for service layout.
-
-## Deploy on Hostinger
-
-Use Hostinger Node.js hosting or VPS, not static-only hosting. The Express server serves the React `dist/` build in production and provides the API/PDF/WhatsApp backend.
-
-Follow [docs/HOSTINGER_DEPLOYMENT.md](./docs/HOSTINGER_DEPLOYMENT.md).
-
-## Services
-
+```bash
+# Set MONGODB_URI / JWT_SECRET in backend/.env
+docker compose up --build -d
+# App → http://localhost:8080
 ```
-server/services/
-  recommendationService.js   # Rule-based combos
-  pdfService.js              # Puppeteer PDFs
-  quotationStorageService.js # Temp files + 24h cleanup
-  cloudinaryService.js       # Invoice uploads only
-  whatsappService.js         # Meta Cloud API (Axios)
-```
+
+## Hostinger
+
+See [docs/HOSTINGER_DEPLOYMENT.md](docs/HOSTINGER_DEPLOYMENT.md).
+
+1. Deploy **`backend/`** as a Node.js app → `npm start`
+2. Build **`frontend/`** with `VITE_API_URL=https://YOUR-API/api` → upload `dist/`

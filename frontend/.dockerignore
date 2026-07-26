@@ -1,0 +1,15 @@
+node_modules
+dist
+npm-debug.log*
+.env
+.env.*
+!.env.example
+!.env.production.example
+legacy
+.git
+.gitignore
+*.md
+.DS_Store
+Dockerfile
+.dockerignore
+eslint.config.js

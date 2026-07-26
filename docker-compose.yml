@@ -1,0 +1,77 @@
+# Battery Inventory — production Docker Compose
+#
+# Usage:
+#   1. Copy .env.docker.example → .env  (or ensure backend/.env exists)
+#   2. docker compose up --build -d
+#   3. Open http://localhost:8080
+#
+# Frontend nginx proxies /api and /generated to the backend service.
+# MongoDB must be reachable (Atlas recommended).
+
+name: inventory-management
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: inventory-backend:latest
+    container_name: inventory-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      # Browser hits frontend host; CORS should allow that origin
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:8080}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      PUPPETEER_SKIP_DOWNLOAD: "1"
+    volumes:
+      - backend_generated:/app/generated
+    ports:
+      # Optional direct API access (nginx already proxies /api)
+      - "${BACKEND_PORT:-3001}:3001"
+    networks:
+      - inventory-net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Same-origin API via nginx proxy (recommended for Docker)
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    image: inventory-frontend:latest
+    container_name: inventory-frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_UPSTREAM: backend:3001
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - inventory-net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+networks:
+  inventory-net:
+    driver: bridge
+
+volumes:
+  backend_generated:
+    name: inventory_backend_generated

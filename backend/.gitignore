@@ -1,0 +1,30 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+node_modules/
+.env
+.env.local
+.env.*.local
+dist/
+dist-ssr/
+*.local
+
+# Runtime PDFs
+generated/*
+!generated/.gitkeep
+generated/accounts/*
+!generated/accounts/.gitkeep
+generated/invoices/*
+!generated/invoices/.gitkeep
+
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

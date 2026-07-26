@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="120" viewBox="0 0 440 120" role="img" aria-label="BatteryMela">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6B21D8"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="18" width="64" height="84" rx="12" fill="url(#g)"/>
+  <rect x="22" y="34" width="36" height="52" rx="6" fill="#fff" opacity="0.95"/>
+  <path d="M34 48h12v24H34z" fill="#6B21D8"/>
+  <text x="88" y="58" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" fill="#111827">Battery</text>
+  <text x="88" y="92" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" fill="#6B21D8">Mela</text>
+  <text x="88" y="112" font-family="Segoe UI, Arial, sans-serif" font-size="11" fill="#6B7280" letter-spacing="2">TRUSTED POWER BACKUP</text>
+</svg>
