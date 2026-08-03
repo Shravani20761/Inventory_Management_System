@@ -17,6 +17,12 @@ if (envResult.error) {
 } else {
   console.log(`[config] Loaded environment from ${envPath}`);
 }
+
+console.log("[startup] Battery Inventory API boot starting…");
+console.log(`[startup] NODE_ENV=${process.env.NODE_ENV || "undefined"} PORT=${process.env.PORT || 3001}`);
+console.log(`[startup] MONGODB_URI is ${process.env.MONGODB_URI ? "set" : "MISSING"}`);
+console.log(`[startup] PUBLIC_BASE_URL=${process.env.PUBLIC_BASE_URL || "(not set)"}`);
+console.log(`[startup] FRONTEND_ORIGIN=${process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN || "(allow all)"}`);
 import { connectMongo, isMongoConnected } from "./config/mongodb.js";
 import "./config/registerCatalogModels.js";
 import { bootstrapAdminIfEmpty } from "./services/authService.js";
@@ -81,14 +87,21 @@ app.get("/api/webhooks/whatsapp", (req, res) => {
   res.sendStatus(403);
 });
 
-app.get("/api/health", (_req, res) => {
-  res.json({
+app.get("/api/health", (req, res) => {
+  const dbOk = isMongoConnected();
+  const payload = {
     ok: true,
-    database: isMongoConnected() ? "mongodb" : "disconnected",
+    status: "up",
+    database: dbOk ? "mongodb" : "disconnected",
     whatsapp: getWhatsAppConfigStatus(),
     cloudinary: getCloudinaryConfigStatus(),
     publicBaseUrl: process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`,
-  });
+    timestamp: new Date().toISOString(),
+  };
+  console.log(
+    `[health] GET /api/health → ok=${payload.ok} database=${payload.database} from=${req.ip || req.socket?.remoteAddress || "unknown"}`,
+  );
+  res.json(payload);
 });
 
 app.use("/api/auth", authRoutes);
@@ -124,8 +137,11 @@ protectedApi.post("/generate-invoice", generateInvoiceController);
 
 app.use("/api", protectedApi);
 
+console.log("[startup] Connecting to MongoDB…");
 await connectMongo();
+console.log("[startup] MongoDB ready — running bootstrap (if needed)…");
 await bootstrapAdminIfEmpty();
+console.log("[startup] Bootstrap complete — binding HTTP server…");
 
 /**
  * Manual MongoDB write check — look in Atlas for collection `battery_write_tests`.
@@ -156,10 +172,17 @@ process.on("unhandledRejection", (err) => {
   console.error("[api] Unhandled rejection:", err);
 });
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   const wa = getWhatsAppConfigStatus();
   const cloud = getCloudinaryConfigStatus();
-  console.log(`BatteryPro API running at http://localhost:${PORT}`);
+  const dbOk = isMongoConnected();
+  console.log("============================================================");
+  console.log("[startup] SUCCESS — Battery Inventory API is running");
+  console.log(`[startup] Listening on 0.0.0.0:${PORT}`);
+  console.log(`[startup] Health check: GET /api/health`);
+  console.log(`[startup] Database: ${dbOk ? "CONNECTED" : "DISCONNECTED"}`);
+  console.log(`[startup] Public base URL: ${publicBaseUrl()}`);
+  console.log("============================================================");
   console.log(`[static] Quotation PDFs: ${GENERATED_DIR}`);
   if (!wa.configured) {
     console.warn("[whatsapp] Meta API not configured — set META_ACCESS_TOKEN and META_PHONE_NUMBER_ID in .env");
@@ -174,7 +197,7 @@ const server = app.listen(PORT, () => {
   if (/localhost|127\.0\.0\.1/i.test(publicBaseUrl())) {
     console.warn(
       "[urls] PUBLIC_BASE_URL is localhost — PDF links / WhatsApp will fail on other devices and Meta cannot download the file.",
-      "Set PUBLIC_BASE_URL to a public HTTPS base (e.g. ngrok) in .env and restart.",
+      "Set PUBLIC_BASE_URL to a public HTTPS base in .env and restart.",
     );
   }
   startQuotationCleanupCron();

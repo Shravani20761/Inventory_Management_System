@@ -13,15 +13,15 @@ function bindConnectionListeners() {
   const conn = mongoose.connection;
   conn.on("connected", () => {
     connected = true;
-    console.log("[db] MongoDB connection established");
+    console.log("[db] MongoDB connection established (driver event)");
   });
   conn.on("reconnected", () => {
     connected = true;
-    console.log("[db] MongoDB reconnected");
+    console.log("[db] SUCCESS — MongoDB reconnected");
   });
   conn.on("disconnected", () => {
     connected = false;
-    console.warn("[db] MongoDB disconnected — driver will retry automatically");
+    console.warn("[db] WARNING — MongoDB disconnected — driver will retry automatically");
   });
   conn.on("error", (err) => {
     console.warn("[db] MongoDB connection error:", err?.message || err);
@@ -38,6 +38,14 @@ export async function connectMongo() {
   if (trimmed.includes("mongodb+srv:mongodb+srv")) {
     console.error("[db] MONGODB_URI looks invalid: duplicated \"mongodb+srv:\" in the string.");
     process.exit(1);
+  }
+
+  // Log target without credentials
+  try {
+    const safe = new URL(trimmed.replace(/^mongodb(\+srv)?:\/\//, "http://"));
+    console.log(`[db] Connecting to host=${safe.hostname} db=${(safe.pathname || "/").replace(/^\//, "") || "(default)"}…`);
+  } catch {
+    console.log("[db] Connecting to MongoDB…");
   }
 
   bindConnectionListeners();
@@ -60,9 +68,12 @@ export async function connectMongo() {
   const maxAttempts = 5;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
+      console.log(`[db] Connection attempt ${attempt}/${maxAttempts}…`);
       await mongoose.connect(trimmed, options);
       connected = true;
-      console.log("[db] Connected to MongoDB");
+      const host = mongoose.connection.host || "unknown";
+      const name = mongoose.connection.name || "unknown";
+      console.log(`[db] SUCCESS — Connected to MongoDB host=${host} database=${name}`);
       return true;
     } catch (err) {
       connected = false;
@@ -72,7 +83,7 @@ export async function connectMongo() {
       );
       if (attempt === maxAttempts) {
         console.error(
-          "[db] Could not reach MongoDB. Check your internet connection and that this machine's IP is whitelisted in Atlas (Network Access).",
+          "[db] FAILED — Could not reach MongoDB. Check MONGODB_URI and Atlas Network Access (IP whitelist).",
         );
         process.exit(1);
       }
