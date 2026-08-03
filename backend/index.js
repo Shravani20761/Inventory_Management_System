@@ -60,8 +60,19 @@ import { startQuotationCleanupCron, GENERATED_DIR, publicBaseUrl } from "./servi
 import { startPurchaseReminderCron } from "./services/purchaseReminderService.js";
 import Battery from "./models/BatteryWriteTest.js";
 
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
 const app = express();
+
+if (process.env.NODE_ENV === "production" && !process.env.PORT) {
+  console.warn(
+    "[startup] WARNING: PORT env is not set. On Hostinger, the platform must inject PORT — do not rely on 3001.",
+  );
+}
+if (process.env.NODE_ENV === "production" && String(process.env.PORT || "") === "3001") {
+  console.warn(
+    "[startup] WARNING: PORT=3001 in production. If this is Hostinger, remove PORT from Environment Variables so Hostinger can assign the correct port.",
+  );
+}
 
 /** Separate Hostinger frontend origin(s), comma-separated. Empty = allow all (dev). */
 const corsOrigin = process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN;
@@ -77,6 +88,16 @@ app.use(
 );
 app.use(express.json({ limit: "15mb" }));
 app.use("/generated", express.static(GENERATED_DIR));
+
+/** Root — useful when Hostinger / monitors hit / instead of /api/health */
+app.get("/", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "inventory-backend",
+    health: "/api/health",
+    message: "Battery Inventory API",
+  });
+});
 
 app.get("/api/webhooks/whatsapp", (req, res) => {
   const mode = req.query["hub.mode"];

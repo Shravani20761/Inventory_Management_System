@@ -178,6 +178,34 @@ In dev, `frontend/vite.config.js` proxies `/api` and `/generated` to `http://loc
 | Mixed content | Both sites must be **HTTPS** |
 | PDF / WhatsApp links broken | Set `PUBLIC_BASE_URL` to the **public API** HTTPS URL |
 | Deep links 404 | Missing `.htaccess` SPA rewrite |
+| Domain `/api/health` returns Hostinger **404 HTML** | Domain is **not** routed to the Node app (see below) |
+| `http://IP:PORT/api/health` fails | SSH IP:port is **not** the public API URL — ignore it for browser tests |
+
+### Domain returns 404/403 but build succeeded
+
+Checked symptom: `https://inventory.quickfixs.com/api/health` → Hostinger CDN **404 HTML** (not Express JSON). That means traffic never reaches Node.
+
+Fix checklist:
+
+1. In hPanel, `inventory.quickfixs.com` must be a **Node.js Web App** (not a normal PHP/static website only).  
+   If the domain was added as a regular website first, Hostinger often requires removing it and redeploying as a Node.js app.
+2. **Application root** = folder with backend `package.json` + `index.js` (the `backend/` contents).
+3. **Entry / start:** `npm start` (or entry file `index.js`).
+4. **Do not set `PORT` in Environment Variables.** Hostinger injects `PORT`. If you set `PORT=3001`, the proxy breaks.
+5. Set env in hPanel (not via a committed `.env` with `PORT=3001`):
+   - `NODE_ENV=production`
+   - `MONGODB_URI=...`
+   - `JWT_SECRET=...`
+   - `PUBLIC_BASE_URL=https://inventory.quickfixs.com`
+   - `FRONTEND_ORIGIN=https://your-frontend-domain.com`
+6. Open **Runtime Logs** — you must see `[startup] SUCCESS`. If logs stop at MongoDB, fix Atlas IP whitelist.
+7. After fix, health URL is only:
+
+```text
+https://inventory.quickfixs.com/api/health
+```
+
+Do **not** use `http://88.x.x.x:65002/...` from the SSH panel — that port is for SSH/internal use, not public HTTP.
 
 ---
 
@@ -186,3 +214,4 @@ In dev, `frontend/vite.config.js` proxies `/api` and `/generated` to `http://loc
 - Do **not** upload `node_modules` from Windows unless required — prefer `npm install` on Hostinger for the backend
 - Do **not** deploy `backend/legacy` or `frontend/legacy`
 - Do **not** put secrets in the frontend build except the public API base URL
+- Do **not** test the API via the SSH IP and custom port
