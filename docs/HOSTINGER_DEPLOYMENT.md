@@ -44,7 +44,10 @@ npm start   # smoke-test locally first
    - **Application startup file / start command:** `npm start`  
      (runs `node --use-system-ca index.js`)
    - **Node version:** 18 or 20
-5. **Install / build:** `npm install` only (no Vite on the API)
+5. **Install / build:**
+   - Install: `npm install`
+   - Build: leave empty **or** `npm run build` (backend has a no-op `build` so Hostinger does not fail)  
+   - Do **not** point the Node app at `frontend/` for build — build the UI locally and upload `dist/`
 
 ### 3. Environment variables (hPanel Node.js → Environment)
 

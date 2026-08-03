@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node --use-system-ca index.js",
     "dev": "node --use-system-ca --watch index.js",
+    "build": "node -e \"console.log('Backend: no compile step — use npm start')\"",
     "seed": "node --use-system-ca scripts/seed.js",
     "seed:vehicle-batteries": "node --use-system-ca scripts/seedVehicleBatteryDemo.js",
     "seed:combo-catalog": "node --use-system-ca scripts/seedDedicatedComboCatalog.js",
