@@ -45,7 +45,11 @@ Frontend uses `VITE_API_URL` (default `/api`). Vite proxies `/api` and `/generat
 
 ## Hostinger Business Hosting (hPanel)
 
-See **[docs/HOSTINGER_DEPLOYMENT.md](docs/HOSTINGER_DEPLOYMENT.md)** for full steps.
+See [docs/HOSTINGER_DEPLOYMENT.md](docs/HOSTINGER_DEPLOYMENT.md) for full steps.
+
+## Coolify (backend Docker)
+
+See [docs/COOLIFY_BACKEND.md](docs/COOLIFY_BACKEND.md). Use `backend/Dockerfile` with Base Directory `backend`.
 
 Summary:
 
