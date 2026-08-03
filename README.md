@@ -1,45 +1,53 @@
 # Battery Inventory Management
 
-Split for Hostinger: **frontend** (static) + **backend** (Node.js) deploy separately.
+Separate **frontend** (React + Vite) and **backend** (Express + MongoDB) for Hostinger Business Hosting (hPanel): Node.js API + static frontend.
 
 ## Structure
 
 ```text
-frontend/          React + Vite UI (deploy static dist/)
-  src/             Live app
-  legacy/          Old battery.jsx prototype (not deployed)
-backend/           Express + MongoDB API (deploy Node.js)
-  models/ routes/  Live Invoice / Product / Quotation stack
-  legacy/          Old CommonJS /server prototype (not started)
-docs/
-docker-compose.yml
+Inventory_management/
+  frontend/     React + Vite UI → build to dist/, upload as static site
+  backend/      Express + MongoDB API → Hostinger Node.js app
+  docs/         Deployment guides
 ```
 
-## Quick start (local)
+Each of `frontend/` and `backend/` also has a small `shared/` copy of isomorphic helpers.
+
+## Local development
 
 ```bash
+cd Inventory_management
 npm install
 npm run install:all
-# Configure backend/.env (see backend/.env.example)
+# Copy backend/.env.example → backend/.env and set MONGODB_URI, JWT_SECRET
 npm run dev
 ```
 
-- Web: http://localhost:5173  
-- API: http://localhost:3001/api/health  
-
-## Docker
-
-See [docs/DOCKER.md](docs/DOCKER.md).
+Or separately:
 
 ```bash
-# Set MONGODB_URI / JWT_SECRET in backend/.env
-docker compose up --build -d
-# App → http://localhost:8080
+# Terminal 1 — API
+cd backend
+npm install
+npm run dev          # or: npm start
+
+# Terminal 2 — UI
+cd frontend
+npm install
+npm run dev          # http://localhost:5173 (proxies /api → :3001)
+npm run build        # production build → dist/
 ```
 
-## Hostinger
+- Web: http://localhost:5173  
+- API health: http://localhost:3001/api/health  
 
-See [docs/HOSTINGER_DEPLOYMENT.md](docs/HOSTINGER_DEPLOYMENT.md).
+Frontend uses `VITE_API_URL` (default `/api`). Vite proxies `/api` and `/generated` to the backend in development.
 
-1. Deploy **`backend/`** as a Node.js app → `npm start`
-2. Build **`frontend/`** with `VITE_API_URL=https://YOUR-API/api` → upload `dist/`
+## Hostinger Business Hosting (hPanel)
+
+See **[docs/HOSTINGER_DEPLOYMENT.md](docs/HOSTINGER_DEPLOYMENT.md)** for full steps.
+
+Summary:
+
+1. **Backend** — Node.js app, root = `backend/`, start = `npm start`
+2. **Frontend** — build with `VITE_API_URL=https://YOUR-API-DOMAIN/api`, upload `frontend/dist/` to `public_html`
