@@ -74,4 +74,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/api/health" || exit 1
 
-CMD ["node", "--use-system-ca", "index.js"]
+CMD ["node", "index.js"]

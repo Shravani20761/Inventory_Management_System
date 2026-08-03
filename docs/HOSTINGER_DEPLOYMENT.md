@@ -42,7 +42,7 @@ npm start   # smoke-test locally first
      (upload only the `backend` folder contents, or set root to `…/backend`)
    - **Application URL / domain:** your API host (e.g. `api.yourdomain.com`)
    - **Application startup file / start command:** `npm start`  
-     (runs `node --use-system-ca index.js`)
+     (runs `node index.js`)
    - **Node version:** 18 or 20
 5. **Install / build:**
    - Install: `npm install`
