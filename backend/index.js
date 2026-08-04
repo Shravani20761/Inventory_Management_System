@@ -10,7 +10,11 @@ const envPath = path.resolve(__dirname, ".env");
 const envResult = dotenv.config({ path: envPath });
 if (envResult.error) {
   if (!fs.existsSync(envPath)) {
-    console.warn(`[config] No .env file at ${envPath}. Create it from .env.example (MONGODB_URI, JWT_SECRET, bootstrap admin).`);
+    if (process.env.MONGODB_URI) {
+      console.log("[config] No .env file — using process environment (Coolify/Hostinger panel).");
+    } else {
+      console.warn(`[config] No .env file at ${envPath}. Create it from .env.example (MONGODB_URI, JWT_SECRET, bootstrap admin).`);
+    }
   } else {
     console.warn(`[config] Could not parse .env: ${envResult.error.message}`);
   }
@@ -22,7 +26,7 @@ console.log("[startup] Battery Inventory API boot starting…");
 console.log(`[startup] NODE_ENV=${process.env.NODE_ENV || "undefined"} PORT=${process.env.PORT || 3001}`);
 console.log(`[startup] MONGODB_URI is ${process.env.MONGODB_URI ? "set" : "MISSING"}`);
 console.log(`[startup] PUBLIC_BASE_URL=${process.env.PUBLIC_BASE_URL || "(not set)"}`);
-console.log(`[startup] FRONTEND_ORIGIN=${process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN || "(allow all)"}`);
+console.log(`[startup] FRONTEND_ORIGIN=${process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN || "(allow all — set me for production SPA)"}`);
 import { connectMongo, isMongoConnected } from "./config/mongodb.js";
 import "./config/registerCatalogModels.js";
 import { bootstrapAdminIfEmpty } from "./services/authService.js";
@@ -65,26 +69,37 @@ const app = express();
 
 if (process.env.NODE_ENV === "production" && !process.env.PORT) {
   console.warn(
-    "[startup] WARNING: PORT env is not set. On Hostinger, the platform must inject PORT — do not rely on 3001.",
-  );
-}
-if (process.env.NODE_ENV === "production" && String(process.env.PORT || "") === "3001") {
-  console.warn(
-    "[startup] WARNING: PORT=3001 in production. If this is Hostinger, remove PORT from Environment Variables so Hostinger can assign the correct port.",
+    "[startup] WARNING: PORT env is not set. Coolify/Hostinger should inject PORT.",
   );
 }
 
-/** Separate Hostinger frontend origin(s), comma-separated. Empty = allow all (dev). */
-const corsOrigin = process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN;
+/** Frontend origin(s) for CORS — comma-separated. Empty = allow any origin (dev). */
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map((s) => s.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+
 app.use(
-  cors(
-    corsOrigin
-      ? {
-          origin: corsOrigin.split(",").map((s) => s.trim()).filter(Boolean),
-          credentials: true,
-        }
-      : true,
-  ),
+  cors({
+    origin(origin, callback) {
+      // curl / server-to-server / same-origin proxies often omit Origin
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.length === 0) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      console.warn(
+        `[cors] Blocked origin "${origin}". Allowed: ${allowedOrigins.join(", ") || "(none)"}. ` +
+          `Set FRONTEND_ORIGIN in Coolify/panel to your frontend URL (no trailing slash).`,
+      );
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    optionsSuccessStatus: 204,
+  }),
+);
+console.log(
+  `[cors] Allowed origins: ${allowedOrigins.length ? allowedOrigins.join(", ") : "(all — set FRONTEND_ORIGIN in production)"}`,
 );
 app.use(express.json({ limit: "15mb" }));
 app.use("/generated", express.static(GENERATED_DIR));
