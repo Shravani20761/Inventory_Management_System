@@ -28,16 +28,16 @@ export default function ProductCard({ product, onEdit, onDelete }) {
     <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       {imgSrc ? <img src={imgSrc} alt="" className="mb-3 h-24 w-full rounded-lg object-contain bg-slate-50 p-1" /> : null}
       <h3 className="font-semibold text-slate-900">{product.modelName}</h3>
-      <p className="text-sm text-slate-500">{product.brand} · {product.category}</p>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+      <p className="text-base text-slate-500">{product.brand} · {product.category}</p>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-base">
         <div><span className="text-slate-500">Stock</span><p className="font-bold">{product.quantity}</p></div>
         <div><span className="text-slate-500">Sell</span><p className="font-bold text-sky-700">₹{Number(product.sellingRate).toLocaleString()}</p></div>
         <div><span className="text-slate-500">Ah/VA</span><p>{product.capacityAh || product.inverterVA || "—"}</p></div>
         <div><span className="text-slate-500">Profit</span><p className={profit >= 0 ? "text-emerald-600" : "text-red-600"}>₹{profit}</p></div>
       </div>
       <div className="mt-3 flex gap-2">
-        <button type="button" onClick={() => onEdit?.(product)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm">Edit</button>
-        <button type="button" onClick={() => onDelete?.(product)} className="rounded-lg bg-red-50 px-3 py-1.5 text-sm text-red-700">Delete</button>
+        <button type="button" onClick={() => onEdit?.(product)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-base">Edit</button>
+        <button type="button" onClick={() => onDelete?.(product)} className="rounded-lg bg-red-50 px-3 py-1.5 text-base text-red-700">Delete</button>
       </div>
     </article>
   );

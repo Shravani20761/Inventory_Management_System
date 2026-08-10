@@ -8,7 +8,7 @@ export default function RecommendationBadge({ label = "Recommended" }) {
     "Premium Choice": "bg-amber-100 text-amber-800",
   };
   return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${styles[label] || "bg-slate-100 text-slate-700"}`}>
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-sm font-semibold ${styles[label] || "bg-slate-100 text-slate-700"}`}>
       {label}
     </span>
   );

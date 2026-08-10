@@ -26,7 +26,7 @@ function ChargeRow({ chargeKey, label, row, onChange }) {
         checked={Boolean(row.enabled)}
         onChange={(e) => onChange(chargeKey, { ...row, enabled: e.target.checked })}
       />
-      <label style={{ fontSize: 13, color: "#374151" }}>{label}</label>
+      <label style={{ fontSize: 16, color: "#374151" }}>{label}</label>
       <input
         className="form-input"
         type="number"
@@ -193,7 +193,7 @@ export function QuotationEditModal({
             <div className="modal-title" style={{ color: "#2563eb" }}>
               Quotation / Estimate
             </div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            <div style={{ fontSize: 15, color: "#6b7280", marginTop: 4 }}>
               Stage 2 · Edit charges · Generate final PDF · Approve &amp; send WhatsApp · Convert to tax invoice
             </div>
           </div>
@@ -253,7 +253,7 @@ export function QuotationEditModal({
           <div className="section-title" style={{ marginTop: 16 }}>
             Selected products
           </div>
-          <div className="card" style={{ padding: 14, fontSize: 13, lineHeight: 1.7, borderLeft: "4px solid #2563eb" }}>
+          <div className="card" style={{ padding: 14, fontSize: 16, lineHeight: 1.7, borderLeft: "4px solid #2563eb" }}>
             <div>
               <strong>Inverter:</strong> {draft.inverter?.brand} {draft.inverter?.model} · {draft.inverter?.inverterVA} VA · ₹
               {Number(draft.inverter?.price || 0).toLocaleString("en-IN")}
@@ -307,23 +307,23 @@ export function QuotationEditModal({
           </div>
 
           <div className="card" style={{ marginTop: 16, padding: 14, background: "#eff6ff", border: "1px solid #bfdbfe" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 6 }}>
               <span>Product subtotal</span>
               <span>₹{Number(totals.productTotal).toLocaleString("en-IN")}</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 6 }}>
               <span>Additional charges</span>
               <span>₹{Number(totals.additionalTotal).toLocaleString("en-IN")}</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 6 }}>
               <span>Discount</span>
               <span>- ₹{Number(draft.discount || 0).toLocaleString("en-IN")}</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 6 }}>
               <span>Taxable subtotal</span>
               <span>₹{Number(totals.subtotal).toLocaleString("en-IN")}</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 6 }}>
               <span>GST ({totals.gstRate}%)</span>
               <span>₹{Number(totals.gstAmount).toLocaleString("en-IN")}</span>
             </div>
@@ -331,7 +331,7 @@ export function QuotationEditModal({
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                fontSize: 18,
+                fontSize: 22,
                 fontWeight: 700,
                 color: "#2563eb",
                 marginTop: 8,
@@ -347,7 +347,7 @@ export function QuotationEditModal({
           <div className="section-title" style={{ marginTop: 16 }}>
             Quotation notes
           </div>
-          <ul style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.8, paddingLeft: 18 }}>
+          <ul style={{ fontSize: 15, color: "#6b7280", lineHeight: 1.8, paddingLeft: 18 }}>
             <li>{draft.notes?.validity || "Prices valid till the validity date mentioned above."}</li>
             <li>{draft.notes?.stock || "Subject to stock availability at time of order."}</li>
             <li>{draft.notes?.notInvoice || "This is a quotation / estimate — not a tax invoice."}</li>

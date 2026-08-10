@@ -8,7 +8,7 @@ import {
 
 function AvailabilityRow({ label, available, quantity }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0", gap: 12 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, padding: "4px 0", gap: 12 }}>
       <span>{label}</span>
       <span style={{ fontWeight: 600, color: available ? "#059669" : "#dc2626", whiteSpace: "nowrap" }}>
         {available ? `Available (Qty: ${quantity})` : "Out of stock"}
@@ -22,7 +22,7 @@ function TypeBadge({ typeId }) {
   return (
     <span
       style={{
-        fontSize: 10,
+        fontSize: 13,
         fontWeight: 700,
         textTransform: "uppercase",
         letterSpacing: "0.04em",
@@ -123,17 +123,17 @@ export function GlobalInventorySearch({
       <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <span>{compact ? "Find stock at other branches" : "Branch inventory search"}</span>
         {userBranchName && (
-          <span style={{ fontSize: 11, color: "#2563eb", background: "#eff6ff", padding: "3px 10px", borderRadius: 999 }}>
+          <span style={{ fontSize: 14, color: "#2563eb", background: "#eff6ff", padding: "3px 10px", borderRadius: 999 }}>
             Your branch: {userBranchName}
           </span>
         )}
       </div>
-      <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+      <p style={{ fontSize: 15, color: "#6b7280", marginBottom: 12 }}>
         Select inventory type, fill the matching fields, then search live across branches. Other branch stock is never preloaded.
       </p>
 
       <div style={{ marginBottom: 12 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>Inventory type</label>
+        <label style={{ fontSize: 15, fontWeight: 600, display: "block", marginBottom: 6 }}>Inventory type</label>
         <select
           className="form-input"
           value={inventoryType}
@@ -158,7 +158,7 @@ export function GlobalInventorySearch({
         >
           {visibleFields.map((field) => (
             <div key={field.key}>
-              <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 4 }}>{field.label}</label>
+              <label style={{ fontSize: 14, color: "#6b7280", display: "block", marginBottom: 4 }}>{field.label}</label>
               {field.type === "select" ? (
                 <select
                   className="form-input"
@@ -191,7 +191,7 @@ export function GlobalInventorySearch({
       {error && <div className="profit-alert loss" style={{ marginTop: 12 }}>{error}</div>}
 
       {results && !results.results?.length && (
-        <div style={{ marginTop: 12, fontSize: 13, color: "#6b7280" }}>
+        <div style={{ marginTop: 12, fontSize: 16, color: "#6b7280" }}>
           {results.message || "No matching products found at any branch."}
         </div>
       )}

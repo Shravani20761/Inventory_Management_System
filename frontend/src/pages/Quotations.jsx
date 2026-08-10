@@ -51,7 +51,7 @@ export default function Quotations() {
           <option>Budget</option><option>Recommended</option><option>Premium</option>
         </select>
         <input className="rounded border px-3 py-2" placeholder="Preferred brand (optional)" value={form.preferredBrand} onChange={(e) => setForm({ ...form, preferredBrand: e.target.value })} />
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.sendWhatsapp} onChange={(e) => setForm({ ...form, sendWhatsapp: e.target.checked })} /> Send WhatsApp after PDF</label>
+        <label className="flex items-center gap-2 text-base"><input type="checkbox" checked={form.sendWhatsapp} onChange={(e) => setForm({ ...form, sendWhatsapp: e.target.checked })} /> Send WhatsApp after PDF</label>
         <div className="flex gap-2 md:col-span-2">
           <button type="button" onClick={previewOptions} disabled={loading} className="rounded-lg border border-slate-300 px-4 py-2">Preview Options</button>
           <button type="button" onClick={generate} disabled={loading} className="rounded-lg bg-sky-600 px-4 py-2 text-white">{loading ? "Working…" : "Generate PDF + WhatsApp"}</button>
@@ -68,7 +68,7 @@ export default function Quotations() {
       )}
 
       {result && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-base text-emerald-900">
           Quotation saved · PDF: <a className="underline" href={result.quotation?.quotationPublicUrl || result.quotation?.quotationPdfUrl} target="_blank" rel="noreferrer">Open</a>
           · WhatsApp: {result.whatsapp?.sent ? "Sent" : result.whatsapp?.error || result.whatsapp?.message || "Not sent"}
         </div>

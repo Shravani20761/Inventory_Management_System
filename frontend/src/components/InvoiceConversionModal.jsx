@@ -31,7 +31,7 @@ function ChargeRow({ chargeKey, label, row, onChange }) {
         checked={Boolean(row.enabled)}
         onChange={(e) => onChange(chargeKey, { ...row, enabled: e.target.checked })}
       />
-      <label style={{ fontSize: 13, color: "#374151" }}>{label}</label>
+      <label style={{ fontSize: 16, color: "#374151" }}>{label}</label>
       <input
         className="form-input"
         type="number"
@@ -107,7 +107,7 @@ export function InvoiceConversionModal({ quotation, selectedOption, quotationOpt
         <div className="modal-header no-print">
           <div>
             <div className="modal-title">Invoice — Finalize Billing</div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            <div style={{ fontSize: 15, color: "#6b7280", marginTop: 4 }}>
               Edit charges · Apply discount · Generate final tax invoice
             </div>
           </div>
@@ -164,7 +164,7 @@ export function InvoiceConversionModal({ quotation, selectedOption, quotationOpt
               <div className="section-title" style={{ marginTop: 16 }}>
                 Selected products
               </div>
-              <div className="card" style={{ padding: 14, fontSize: 13, lineHeight: 1.7 }}>
+              <div className="card" style={{ padding: 14, fontSize: 16, lineHeight: 1.7 }}>
                 <div>
                   <strong>Inverter:</strong> {draft.inverter?.brand} {draft.inverter?.model} · {draft.inverter?.inverterVA} VA · ₹
                   {Number(draft.inverter?.price || 0).toLocaleString("en-IN")}
@@ -196,7 +196,7 @@ export function InvoiceConversionModal({ quotation, selectedOption, quotationOpt
                       borderRadius: 8,
                       border: `2px solid ${totals.pricingMode === mode ? "#6B21D8" : "#e5e7eb"}`,
                       background: totals.pricingMode === mode ? "#faf5ff" : "#fff",
-                      fontSize: 13,
+                      fontSize: 16,
                       cursor: "pointer",
                     }}
                   >
@@ -218,7 +218,7 @@ export function InvoiceConversionModal({ quotation, selectedOption, quotationOpt
                 ))}
               </div>
               {totals.scrapAdjustment > 0 && (
-                <div style={{ fontSize: 12, color: "#059669", marginBottom: 12 }}>
+                <div style={{ fontSize: 15, color: "#059669", marginBottom: 12 }}>
                   Old battery exchange credit: ₹{totals.scrapAdjustment.toLocaleString("en-IN")}
                 </div>
               )}
@@ -298,7 +298,7 @@ export function InvoiceConversionModal({ quotation, selectedOption, quotationOpt
                 <textarea className="form-input" rows={2} value={draft.notes?.warranty || ""} onChange={(e) => setNote("warranty", e.target.value)} />
               </div>
 
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginTop: 8 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 16, marginTop: 8 }}>
                 <input type="checkbox" checked={draft.sendWhatsapp !== false} onChange={(e) => setDraft((d) => ({ ...d, sendWhatsapp: e.target.checked }))} />
                 Send invoice PDF on WhatsApp
               </label>
@@ -312,7 +312,7 @@ export function InvoiceConversionModal({ quotation, selectedOption, quotationOpt
                   border: "1px solid #e9d5ff",
                 }}
               >
-                <div style={{ fontSize: 13, lineHeight: 1.9 }}>
+                <div style={{ fontSize: 16, lineHeight: 1.9 }}>
                   <div>Product total: ₹{totals.productTotal.toLocaleString("en-IN")}</div>
                   <div>Additional charges: ₹{totals.additionalTotal.toLocaleString("en-IN")}</div>
                   {Number(draft.discount || 0) > 0 && (
@@ -322,10 +322,10 @@ export function InvoiceConversionModal({ quotation, selectedOption, quotationOpt
                   <div>
                     GST ({totals.gstRate}%): ₹{totals.gstAmount.toLocaleString("en-IN")}
                   </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: "#6B21D8", marginTop: 8 }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: "#6B21D8", marginTop: 8 }}>
                     Grand total: ₹{totals.finalTotal.toLocaleString("en-IN")}
                   </div>
-                  <div style={{ fontSize: 12, color: "#6b7280" }}>
+                  <div style={{ fontSize: 15, color: "#6b7280" }}>
                     Pending: ₹{Math.max(0, totals.finalTotal - Number(draft.paidAmount || 0)).toLocaleString("en-IN")}
                   </div>
                 </div>

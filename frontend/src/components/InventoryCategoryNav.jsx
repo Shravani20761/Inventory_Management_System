@@ -35,7 +35,7 @@ export function InventoryCategoryNav({ categoryId, brandFilter, onCategoryChange
             border: "1px solid #e5e7eb",
           }}
         >
-          <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", alignSelf: "center", marginRight: 4 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#6b7280", alignSelf: "center", marginRight: 4 }}>
             {category.label} ·
           </span>
           {brandCounts.map(({ brand, count, isOther }) => (
@@ -49,7 +49,7 @@ export function InventoryCategoryNav({ categoryId, brandFilter, onCategoryChange
                 color: brandFilter === brand ? "#1d4ed8" : "#374151",
                 borderRadius: 999,
                 padding: "6px 14px",
-                fontSize: 12,
+                fontSize: 15,
                 fontWeight: brandFilter === brand ? 700 : 500,
                 cursor: "pointer",
               }}
@@ -58,7 +58,7 @@ export function InventoryCategoryNav({ categoryId, brandFilter, onCategoryChange
               <span
                 style={{
                   marginLeft: 6,
-                  fontSize: 11,
+                  fontSize: 14,
                   color: brandFilter === brand ? "#1d4ed8" : "#6b7280",
                   fontWeight: 600,
                 }}
@@ -71,7 +71,7 @@ export function InventoryCategoryNav({ categoryId, brandFilter, onCategoryChange
       )}
 
       {category.id === "combo" && (
-        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
+        <div style={{ fontSize: 15, color: "#6b7280", marginTop: 8 }}>
           Combo inventory is unified — no brand sub-sections (dynamic pairing in quotations).
         </div>
       )}

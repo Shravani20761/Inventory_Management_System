@@ -15,7 +15,7 @@ const TRANSFER_STATUS_COLORS = {
 function statusChip(status) {
   const s = TRANSFER_STATUS_COLORS[status] || { bg: "#f3f4f6", color: "#374151" };
   return (
-    <span style={{ background: s.bg, color: s.color, padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 600 }}>
+    <span style={{ background: s.bg, color: s.color, padding: "2px 8px", borderRadius: 999, fontSize: 14, fontWeight: 600 }}>
       {status}
     </span>
   );
@@ -151,10 +151,10 @@ export function StockTransfersPage({ userBranchId, userBranchName, userRole }) {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div>
                     <div style={{ fontWeight: 700 }}>{t.requestId}</div>
-                    <div style={{ fontSize: 13, marginTop: 4 }}>
+                    <div style={{ fontSize: 16, marginTop: 4 }}>
                       <strong>{t.quantity}×</strong> {t.brand} {t.model}
                     </div>
-                    <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+                    <div style={{ fontSize: 15, color: "#6b7280", marginTop: 4 }}>
                       {t.fromBranchName} → {t.toBranchName}
                     </div>
                   </div>
@@ -187,7 +187,7 @@ export function StockTransfersPage({ userBranchId, userBranchName, userRole }) {
                     </button>
                   )}
                   {["Completed", "Rejected"].includes(t.status) && (
-                    <span style={{ fontSize: 12, color: "#9ca3af", fontStyle: "italic" }}>
+                    <span style={{ fontSize: 15, color: "#9ca3af", fontStyle: "italic" }}>
                       Read only — {t.status.toLowerCase()}
                     </span>
                   )}

@@ -34,7 +34,7 @@ export default function ComboGenerator() {
       </div>
       {result && (
         <div className="rounded-xl border bg-white p-4">
-          <p className="mb-4 text-sm">Estimated load: <strong>{result.totalLoad}W</strong></p>
+          <p className="mb-4 text-base">Estimated load: <strong>{result.totalLoad}W</strong></p>
           <ComparisonTable options={options} />
         </div>
       )}

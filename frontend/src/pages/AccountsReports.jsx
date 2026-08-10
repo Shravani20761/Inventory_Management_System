@@ -230,7 +230,7 @@ export default function AccountsReports({ user }) {
             </>
           )}
           <button className="btn btn-primary btn-sm" onClick={() => loadTab(tab)}>Apply</button>
-          <span style={{ marginLeft: "auto", fontSize: 12, color: "#6b7280" }}>Showing: <b>{periodLabel}</b></span>
+          <span style={{ marginLeft: "auto", fontSize: 15, color: "#6b7280" }}>Showing: <b>{periodLabel}</b></span>
         </div>
       </div>
 

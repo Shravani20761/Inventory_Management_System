@@ -2,7 +2,7 @@ export default function ComparisonTable({ options = [] }) {
   if (!options.length) return null;
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-      <table className="min-w-full text-sm">
+      <table className="min-w-full text-base">
         <thead className="bg-slate-900 text-left text-white">
           <tr>
             <th className="px-4 py-3">Option</th>

@@ -42,21 +42,21 @@ export default function Inventory() {
         </div>
         <div className="flex gap-2">
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => onExcel(e.target.files?.[0])} />
-          <button type="button" onClick={() => fileRef.current?.click()} className="rounded-lg border border-slate-300 px-4 py-2 text-sm">Upload Excel</button>
+          <button type="button" onClick={() => fileRef.current?.click()} className="rounded-lg border border-slate-300 px-4 py-2 text-base">Upload Excel</button>
         </div>
       </div>
 
       <form onSubmit={save} className="mb-8 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-4">
-        <input className="rounded border px-3 py-2 text-sm" placeholder="Model name" value={form.modelName} onChange={(e) => setForm({ ...form, modelName: e.target.value })} required />
-        <input className="rounded border px-3 py-2 text-sm" placeholder="Brand" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
-        <select className="rounded border px-3 py-2 text-sm" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+        <input className="rounded border px-3 py-2 text-base" placeholder="Model name" value={form.modelName} onChange={(e) => setForm({ ...form, modelName: e.target.value })} required />
+        <input className="rounded border px-3 py-2 text-base" placeholder="Brand" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
+        <select className="rounded border px-3 py-2 text-base" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
           <option>Battery</option><option>Inverter</option><option>UPS</option>
         </select>
-        <input type="number" className="rounded border px-3 py-2 text-sm" placeholder="Qty" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} />
-        <input type="number" className="rounded border px-3 py-2 text-sm" placeholder="Purchase rate" value={form.purchaseRate} onChange={(e) => setForm({ ...form, purchaseRate: Number(e.target.value) })} />
-        <input type="number" className="rounded border px-3 py-2 text-sm" placeholder="Selling rate" value={form.sellingRate} onChange={(e) => setForm({ ...form, sellingRate: Number(e.target.value) })} />
-        <input type="number" className="rounded border px-3 py-2 text-sm" placeholder="Ah or VA" value={form.capacityAh || form.inverterVA} onChange={(e) => setForm({ ...form, capacityAh: Number(e.target.value), inverterVA: Number(e.target.value) })} />
-        <button type="submit" className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white">{editing ? "Update" : "Add"} Product</button>
+        <input type="number" className="rounded border px-3 py-2 text-base" placeholder="Qty" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} />
+        <input type="number" className="rounded border px-3 py-2 text-base" placeholder="Purchase rate" value={form.purchaseRate} onChange={(e) => setForm({ ...form, purchaseRate: Number(e.target.value) })} />
+        <input type="number" className="rounded border px-3 py-2 text-base" placeholder="Selling rate" value={form.sellingRate} onChange={(e) => setForm({ ...form, sellingRate: Number(e.target.value) })} />
+        <input type="number" className="rounded border px-3 py-2 text-base" placeholder="Ah or VA" value={form.capacityAh || form.inverterVA} onChange={(e) => setForm({ ...form, capacityAh: Number(e.target.value), inverterVA: Number(e.target.value) })} />
+        <button type="submit" className="rounded-lg bg-sky-600 px-4 py-2 text-base font-medium text-white">{editing ? "Update" : "Add"} Product</button>
       </form>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

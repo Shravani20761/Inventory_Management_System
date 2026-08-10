@@ -14,7 +14,7 @@ export default function Reports() {
       {!data ? (
         <p className="text-slate-600">No report data yet. Add sales and invoices to see profit summary.</p>
       ) : (
-        <pre className="rounded-xl border bg-white p-4 text-sm overflow-auto">{JSON.stringify(data, null, 2)}</pre>
+        <pre className="rounded-xl border bg-white p-4 text-base overflow-auto">{JSON.stringify(data, null, 2)}</pre>
       )}
     </div>
   );

@@ -252,7 +252,7 @@ export default function App() {
             background: "#fef2f2",
             border: "1px solid #fecaca",
             color: "#991b1b",
-            fontSize: 13,
+            fontSize: 16,
           }}
         >
           <strong>
@@ -353,13 +353,13 @@ export default function App() {
               <i className={`ti ${apiOnline ? "ti-plug-connected" : "ti-plug-off"}`}></i>
               {apiOnline ? "API connected" : "Offline mode"}
             </div>
-            <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>{user?.name || "Signed in"}</div>
-            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>{user?.role || ""}</div>
+            <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 4 }}>{user?.name || "Signed in"}</div>
+            <div style={{ fontSize: 14, color: "#64748b", marginBottom: 8 }}>{user?.role || ""}</div>
             <button type="button" className="btn btn-sm btn-outline" style={{ width: "100%" }} onClick={logout}>
               Log out
             </button>
-            <div style={{ fontSize: 13, color: "#374151", fontWeight: 500 }}>Sharma Battery Store</div>
-            <div style={{ fontSize: 11, color: "#6b7280" }}>Pune, Maharashtra</div>
+            <div style={{ fontSize: 16, color: "#374151", fontWeight: 500 }}>Sharma Battery Store</div>
+            <div style={{ fontSize: 14, color: "#6b7280" }}>Pune, Maharashtra</div>
           </div>
         </aside>
         {mainBlock}
@@ -417,7 +417,7 @@ function Dashboard({ inventory, quotations, invoices, setPage, apiOnline, user }
             )}
           </div>
         </div>
-        <div style={{ fontSize: 12, color: "#6b7280" }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
+        <div style={{ fontSize: 15, color: "#6b7280" }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
       </div>
 
       <div className="grid-4">
@@ -470,7 +470,7 @@ function Dashboard({ inventory, quotations, invoices, setPage, apiOnline, user }
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {(branchLowStock.length ? branchLowStock : lowStock.slice(0, 8)).map((item, i) => (
-              <span key={item.inventoryDocId || item.id || i} className="badge badge-red" style={{ fontSize: 11 }}>
+              <span key={item.inventoryDocId || item.id || i} className="badge badge-red" style={{ fontSize: 14 }}>
                 {item.model || item.brand} · Qty {item.quantity ?? item.qty ?? 0}
               </span>
             ))}
@@ -486,7 +486,7 @@ function Dashboard({ inventory, quotations, invoices, setPage, apiOnline, user }
         <div className="card">
           <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span>Low Stock Alert</span>
-            <span style={{ fontSize: 11, color: "#ef4444", background: "#fee2e2", padding: "3px 8px", borderRadius: 6 }}>{lowStock.length} items</span>
+            <span style={{ fontSize: 14, color: "#ef4444", background: "#fee2e2", padding: "3px 8px", borderRadius: 6 }}>{lowStock.length} items</span>
           </div>
           {lowStock.length === 0 ? (
             <div className="empty-state"><i className="ti ti-circle-check" style={{ color: "#10b981" }}></i>All items well stocked</div>
@@ -496,7 +496,7 @@ function Dashboard({ inventory, quotations, invoices, setPage, apiOnline, user }
               <tbody>
                 {lowStock.map(item => (
                   <tr key={item.id}>
-                    <td style={{ fontSize: 12 }}>{item.model}</td>
+                    <td style={{ fontSize: 15 }}>{item.model}</td>
                     <td><span className="badge badge-blue">{item.type}</span></td>
                     <td><span className="badge badge-red">{item.quantity}</span></td>
                     <td><button className="btn btn-sm btn-outline" onClick={() => setPage("inventory")}>Restock</button></td>
@@ -517,7 +517,7 @@ function Dashboard({ inventory, quotations, invoices, setPage, apiOnline, user }
                 const pct = ((margin / item.purchaseRate) * 100).toFixed(0);
                 return (
                   <tr key={item.id}>
-                    <td style={{ fontSize: 12 }}>{item.brand} {item.ah}Ah</td>
+                    <td style={{ fontSize: 15 }}>{item.brand} {item.ah}Ah</td>
                     <td style={{ color: "#6b7280" }}>₹{item.purchaseRate.toLocaleString()}</td>
                     <td style={{ color: "#374151" }}>₹{item.sellRate.toLocaleString()}</td>
                     <td><span className="badge badge-green">+{pct}%</span></td>
@@ -533,30 +533,30 @@ function Dashboard({ inventory, quotations, invoices, setPage, apiOnline, user }
         <div className="section-title">Recent Activity</div>
         <div style={{ display: "flex", gap: 24 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>Recent Quotations</div>
+            <div style={{ fontSize: 15, color: "#6b7280", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>Recent Quotations</div>
             {quotations.slice(0, 4).map(q => (
               <div key={q.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #e5e7eb" }}>
                 <div>
-                  <div style={{ fontSize: 13, color: "#374151", fontWeight: 500 }}>{q.customer}</div>
-                  <div style={{ fontSize: 11, color: "#6b7280" }}>{q.id} · {q.date}</div>
+                  <div style={{ fontSize: 16, color: "#374151", fontWeight: 500 }}>{q.customer}</div>
+                  <div style={{ fontSize: 14, color: "#6b7280" }}>{q.id} · {q.date}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>₹{q.total.toLocaleString()}</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#111827" }}>₹{q.total.toLocaleString()}</div>
                   <span className={`badge ${q.status === "Converted" ? "badge-green" : q.status === "Rejected" ? "badge-red" : "badge-yellow"}`}>{q.status}</span>
                 </div>
               </div>
             ))}
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>Recent Invoices</div>
+            <div style={{ fontSize: 15, color: "#6b7280", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>Recent Invoices</div>
             {invoices.map(inv => (
               <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #e5e7eb" }}>
                 <div>
-                  <div style={{ fontSize: 13, color: "#374151", fontWeight: 500 }}>{inv.customer}</div>
-                  <div style={{ fontSize: 11, color: "#6b7280" }}>{inv.id} · {inv.date}</div>
+                  <div style={{ fontSize: 16, color: "#374151", fontWeight: 500 }}>{inv.customer}</div>
+                  <div style={{ fontSize: 14, color: "#6b7280" }}>{inv.id} · {inv.date}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>₹{inv.total.toLocaleString()}</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#111827" }}>₹{inv.total.toLocaleString()}</div>
                   <span className={`badge ${inv.paid ? "badge-green" : "badge-red"}`}>{inv.paid ? "Paid" : "Unpaid"}</span>
                 </div>
               </div>
@@ -575,10 +575,10 @@ function StatCard({ label, value, sub, icon, color }) {
         <div>
           <div className="stat-label">{label}</div>
           <div className="stat-value" style={{ color }}>{value}</div>
-          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>{sub}</div>
+          <div style={{ fontSize: 14, color: "#6b7280", marginTop: 4 }}>{sub}</div>
         </div>
         <div style={{ width: 40, height: 40, background: `${color}15`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <i className={`ti ${icon}`} style={{ fontSize: 20, color }}></i>
+          <i className={`ti ${icon}`} style={{ fontSize: 24, color }}></i>
         </div>
       </div>
     </div>
@@ -693,7 +693,7 @@ function formatTrolleyTableCell(col, item, serialNumber = null, branchName = "")
 
 function trolleyCellStyle(col) {
   const base = {
-    fontSize: 11,
+    fontSize: 14,
     maxWidth: col.key === "notes" || col.key === "suitableBatteryType" ? 200 : 130,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -739,7 +739,7 @@ function formatInverterTableCell(col, item, serialNumber = null) {
 
 function inverterCellStyle(col) {
   const base = {
-    fontSize: 11,
+    fontSize: 14,
     maxWidth: 130,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -787,7 +787,7 @@ function formatLithiumIonTableCell(col, item, serialNumber = null, branchName = 
 
 function lithiumIonCellStyle(col) {
   const base = {
-    fontSize: 11,
+    fontSize: 14,
     maxWidth: 130,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -851,7 +851,7 @@ function formatHomeInvBatTableCell(col, item, serialNumber = null) {
 
 function homeInvBatCellStyle(col) {
   const base = {
-    fontSize: 11,
+    fontSize: 14,
     maxWidth: 130,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -1554,7 +1554,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
         />
       )}
 
-      {uploadMsg && <div style={{ marginBottom: 12, fontSize: 13, color: uploadMsg.includes("Added") ? "#059669" : "#dc2626" }}>{uploadMsg}</div>}
+      {uploadMsg && <div style={{ marginBottom: 12, fontSize: 16, color: uploadMsg.includes("Added") ? "#059669" : "#dc2626" }}>{uploadMsg}</div>}
 
       <InventoryCategoryNav
         categoryId={categoryId}
@@ -1595,12 +1595,12 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             padding: "12px 16px",
             borderLeft: "4px solid #8b5cf6",
             background: "#f5f3ff",
-            fontSize: 13,
+            fontSize: 16,
             color: "#5b21b6",
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Inverter inventory</div>
-          <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 15, lineHeight: 1.5 }}>
             The table lists inverter SKUs with ERP pricing columns <strong>DP</strong>, <strong>CD</strong>, and <strong>MRP</strong>, plus <strong>Qty</strong> stock on hand.
           </div>
         </div>
@@ -1614,15 +1614,15 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             padding: "12px 16px",
             borderLeft: "4px solid #0ea5e9",
             background: "#f0f9ff",
-            fontSize: 13,
+            fontSize: 16,
             color: "#0c4a6e",
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Inverter + battery (combo)</div>
-          <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 15, lineHeight: 1.5 }}>
             The <strong>Inv + Battery</strong> table lists the same 24 columns as your master sheet (scroll horizontally on small screens). Optional: use{" "}
             <strong>Spec</strong> field (optional) for a single line like{" "}
-            <code style={{ fontSize: 11 }}>1100 VA | 150 Ah | ~4 hr</code> helps quotations; hover Combo ID or Inverter Model for that preview. Use{" "}
+            <code style={{ fontSize: 14 }}>1100 VA | 150 Ah | ~4 hr</code> helps quotations; hover Combo ID or Inverter Model for that preview. Use{" "}
             <strong>I / B / L</strong> in Actions to upload inverter, battery, and brand images to Cloudinary (requires <code>CLOUDINARY_*</code> in{" "}
             <code>.env</code>) — URLs are stored on the row for quotation PDFs.
           </div>
@@ -1637,12 +1637,12 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             padding: "12px 16px",
             borderLeft: "4px solid #f59e0b",
             background: "#fffbeb",
-            fontSize: 13,
+            fontSize: 16,
             color: "#92400e",
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Luminous trolley inventory</div>
-          <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 15, lineHeight: 1.5 }}>
             Upload and manage <strong>Luminous trolley</strong> SKUs separately from inverters and combos. Used for optional trolley charges in quotations.
           </div>
         </div>
@@ -1656,12 +1656,12 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             padding: "12px 16px",
             borderLeft: "4px solid #06b6d4",
             background: "#ecfeff",
-            fontSize: 13,
+            fontSize: 16,
             color: "#155e75",
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Lithium ion battery inventory</div>
-          <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 15, lineHeight: 1.5 }}>
             Separate collection for <strong>lithium-ion</strong> SKUs (Microtek and other brands). ERP table with compulsory <strong>DP</strong> and <strong>CD</strong>. Uploads append only — other inventory is never deleted.
           </div>
         </div>
@@ -1675,12 +1675,12 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             padding: "12px 16px",
             borderLeft: "4px solid #059669",
             background: "#ecfdf5",
-            fontSize: 13,
+            fontSize: 16,
             color: "#065f46",
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Battery inventory</div>
-          <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 15, lineHeight: 1.5 }}>
             ERP pricing layout: <strong>CD</strong> (cash discount), <strong>DP</strong> (distributor price), <strong>MRP FINAL</strong>, exchange rates, and marketplace comparison — without quotation clutter fields.
           </div>
         </div>
@@ -1693,18 +1693,18 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
               <thead>
                 <tr>
                   {COMBO_INVENTORY_TABLE_COLUMNS.map((col) => (
-                    <th key={col.key} style={{ fontSize: 10, whiteSpace: "nowrap" }}>
+                    <th key={col.key} style={{ fontSize: 13, whiteSpace: "nowrap" }}>
                       {col.label}
                     </th>
                   ))}
-                  <th style={{ fontSize: 10, whiteSpace: "nowrap" }} title="Inverter | Battery | Brand logo image URLs set">
+                  <th style={{ fontSize: 13, whiteSpace: "nowrap" }} title="Inverter | Battery | Brand logo image URLs set">
                     PDF imgs
                   </th>
-                  <th style={{ fontSize: 10, whiteSpace: "nowrap" }}>TYPE</th>
-                  <th style={{ fontSize: 10, whiteSpace: "nowrap" }}>Dp+GST</th>
-                  <th style={{ fontSize: 10, whiteSpace: "nowrap" }}>MRP</th>
-                  <th style={{ fontSize: 10, whiteSpace: "nowrap" }}>P&amp;L</th>
-                  <th style={{ fontSize: 10, whiteSpace: "nowrap" }}>Actions</th>
+                  <th style={{ fontSize: 13, whiteSpace: "nowrap" }}>TYPE</th>
+                  <th style={{ fontSize: 13, whiteSpace: "nowrap" }}>Dp+GST</th>
+                  <th style={{ fontSize: 13, whiteSpace: "nowrap" }}>MRP</th>
+                  <th style={{ fontSize: 13, whiteSpace: "nowrap" }}>P&amp;L</th>
+                  <th style={{ fontSize: 13, whiteSpace: "nowrap" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1723,7 +1723,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                         <td
                           key={col.key}
                           style={{
-                            fontSize: 11,
+                            fontSize: 14,
                             maxWidth: col.key === "notes" ? 200 : 120,
                             overflow: "hidden",
                             textOverflow: "ellipsis",
@@ -1741,7 +1741,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                         </td>
                       ))}
                       <td
-                        style={{ fontSize: 10, color: "#64748b", whiteSpace: "nowrap", fontFamily: "monospace" }}
+                        style={{ fontSize: 13, color: "#64748b", whiteSpace: "nowrap", fontFamily: "monospace" }}
                         title="Inverter | Battery | Brand logo (✓ = URL stored)"
                       >
                         {["inverterImage", "batteryImage", "brandLogo"].map((k) => (String(item[k] || "").trim() ? "✓" : "·")).join(" ")}
@@ -1749,10 +1749,10 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                       <td>
                         <span className="badge badge-blue">{item.type}</span>
                       </td>
-                      <td style={{ color: "#6b7280", fontSize: 11 }}>₹{buyForPl.toLocaleString("en-IN")}</td>
-                      <td style={{ color: "#374151", fontWeight: 500, fontSize: 11 }}>₹{Number(item.mrp || 0).toLocaleString("en-IN")}</td>
+                      <td style={{ color: "#6b7280", fontSize: 14 }}>₹{buyForPl.toLocaleString("en-IN")}</td>
+                      <td style={{ color: "#374151", fontWeight: 500, fontSize: 14 }}>₹{Number(item.mrp || 0).toLocaleString("en-IN")}</td>
                       <td>
-                        <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`} style={{ padding: "3px 6px", fontSize: 10, display: "inline-block" }}>
+                        <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`} style={{ padding: "3px 6px", fontSize: 13, display: "inline-block" }}>
                           {profit >= 0 ? "+" : ""}₹{profit.toLocaleString("en-IN")} ({pct}%)
                         </div>
                       </td>
@@ -1767,7 +1767,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                             disabled={comboImgUploadBusy}
                             onClick={() => openComboImagePicker(item, "inverterImage")}
                             title="Upload inverter image (Cloudinary)"
-                            style={{ fontSize: 10, padding: "2px 6px" }}
+                            style={{ fontSize: 13, padding: "2px 6px" }}
                           >
                             I
                           </button>
@@ -1777,7 +1777,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                             disabled={comboImgUploadBusy}
                             onClick={() => openComboImagePicker(item, "batteryImage")}
                             title="Upload battery image (Cloudinary)"
-                            style={{ fontSize: 10, padding: "2px 6px" }}
+                            style={{ fontSize: 13, padding: "2px 6px" }}
                           >
                             B
                           </button>
@@ -1787,7 +1787,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                             disabled={comboImgUploadBusy}
                             onClick={() => openComboImagePicker(item, "brandLogo")}
                             title="Upload brand logo (Cloudinary)"
-                            style={{ fontSize: 10, padding: "2px 6px" }}
+                            style={{ fontSize: 13, padding: "2px 6px" }}
                           >
                             L
                           </button>
@@ -1823,7 +1823,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                       key={g.id}
                       colSpan={g.span}
                       style={{
-                        fontSize: 10,
+                        fontSize: 13,
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
                         color: "#64748b",
@@ -1837,7 +1837,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                   ))}
                   <th
                     rowSpan={2}
-                    style={{ fontSize: 10, whiteSpace: "nowrap", verticalAlign: "bottom", background: "#fff" }}
+                    style={{ fontSize: 13, whiteSpace: "nowrap", verticalAlign: "bottom", background: "#fff" }}
                   >
                     Actions
                   </th>
@@ -1847,7 +1847,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                     <th
                       key={col.key}
                       style={{
-                        fontSize: 10,
+                        fontSize: 13,
                         whiteSpace: "nowrap",
                         textAlign: col.align === "center" ? "center" : "left",
                         background: col.group === "pricing" ? "#f8fafc" : col.group === "exchange" ? "#fffbeb" : col.group === "market" ? "#f0fdf4" : "#fff",
@@ -1922,7 +1922,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                       key={g.id}
                       colSpan={g.span}
                       style={{
-                        fontSize: 10,
+                        fontSize: 13,
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
                         color: "#64748b",
@@ -1937,7 +1937,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                   ))}
                   <th
                     rowSpan={2}
-                    style={{ fontSize: 10, whiteSpace: "nowrap", verticalAlign: "bottom", background: "#fff" }}
+                    style={{ fontSize: 13, whiteSpace: "nowrap", verticalAlign: "bottom", background: "#fff" }}
                   >
                     Actions
                   </th>
@@ -1947,7 +1947,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                     <th
                       key={col.key}
                       style={{
-                        fontSize: 10,
+                        fontSize: 13,
                         whiteSpace: "nowrap",
                         textAlign: col.align === "center" ? "center" : "left",
                         background:
@@ -2013,7 +2013,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                       key={g.id}
                       colSpan={g.span}
                       style={{
-                        fontSize: 10,
+                        fontSize: 13,
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
                         color: "#64748b",
@@ -2027,7 +2027,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                   ))}
                   <th
                     rowSpan={2}
-                    style={{ fontSize: 10, whiteSpace: "nowrap", verticalAlign: "bottom", background: "#fff" }}
+                    style={{ fontSize: 13, whiteSpace: "nowrap", verticalAlign: "bottom", background: "#fff" }}
                   >
                     Actions
                   </th>
@@ -2037,7 +2037,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                     <th
                       key={col.key}
                       style={{
-                        fontSize: 10,
+                        fontSize: 13,
                         whiteSpace: "nowrap",
                         textAlign: col.align === "center" ? "center" : "left",
                         background:
@@ -2108,7 +2108,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                       key={g.id}
                       colSpan={g.span}
                       style={{
-                        fontSize: 10,
+                        fontSize: 13,
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
                         color: "#64748b",
@@ -2122,7 +2122,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                   ))}
                   <th
                     rowSpan={2}
-                    style={{ fontSize: 10, whiteSpace: "nowrap", verticalAlign: "bottom", background: "#fff" }}
+                    style={{ fontSize: 13, whiteSpace: "nowrap", verticalAlign: "bottom", background: "#fff" }}
                   >
                     Actions
                   </th>
@@ -2132,7 +2132,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                     <th
                       key={col.key}
                       style={{
-                        fontSize: 10,
+                        fontSize: 13,
                         whiteSpace: "nowrap",
                         textAlign: col.align === "center" ? "center" : "left",
                         background:
@@ -2227,22 +2227,22 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                   const cap = item.productCapacity || (item.ah ? `${item.ah}Ah` : "—");
                   return (
                     <tr key={`inv-${String(item.id ?? "x")}-${item.model}`}>
-                      <td style={{ color: "#6b7280", fontSize: 12 }}>{sr}</td>
+                      <td style={{ color: "#6b7280", fontSize: 15 }}>{sr}</td>
                       <td style={{ fontWeight: 500, color: "#111827" }}>{item.model}</td>
-                      <td style={{ fontSize: 11, color: "#475569", maxWidth: 180 }} title={cap}>
+                      <td style={{ fontSize: 14, color: "#475569", maxWidth: 180 }} title={cap}>
                         {cap}
                       </td>
                       <td>
                         <span className="badge badge-blue">{item.type}</span>
                       </td>
-                      <td style={{ color: "#6b7280", fontSize: 12 }}>{item.weight != null && item.weight !== "" ? item.weight : "—"}</td>
+                      <td style={{ color: "#6b7280", fontSize: 15 }}>{item.weight != null && item.weight !== "" ? item.weight : "—"}</td>
                       <td style={{ color: "#6b7280" }}>₹{Number(item.scrapRate || 0).toLocaleString()}</td>
                       <td style={{ color: "#6b7280" }}>₹{buyForPl.toLocaleString()}</td>
                       {isAutomotiveTab ? (
                         <td style={{ color: "#6b7280" }}>{cd > 0 ? `₹${cd.toLocaleString()}` : "—"}</td>
                       ) : null}
                       <td style={{ color: "#374151", fontWeight: 500 }}>₹{Number(item.mrp || 0).toLocaleString()}</td>
-                      <td style={{ color: "#6b7280", fontSize: 12 }}>{String(item.warranty || "").trim() || "—"}</td>
+                      <td style={{ color: "#6b7280", fontSize: 15 }}>{String(item.warranty || "").trim() || "—"}</td>
                       <td style={{ color: "#0f766e", fontWeight: 600 }}>₹{ob.toLocaleString()}</td>
                       <td style={{ color: "#0369a1", fontWeight: 500 }}>₹{wo.toLocaleString()}</td>
                       <td>
@@ -2251,7 +2251,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                         </span>
                       </td>
                       <td>
-                        <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`} style={{ padding: "3px 8px", fontSize: 11, display: "inline-block" }}>
+                        <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`} style={{ padding: "3px 8px", fontSize: 14, display: "inline-block" }}>
                           {profit >= 0 ? "+" : ""}₹{profit.toLocaleString()} ({pct}%)
                         </div>
                       </td>
@@ -2571,7 +2571,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
                   <input className="form-input" value={form.notes} onChange={(e) => set("notes", e.target.value)} />
                 </div>
               </div>
-              <p style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+              <p style={{ fontSize: 15, color: "#64748b", marginBottom: 8 }}>
                 <strong>Quotation PDF images</strong> — paste HTTPS URLs, or use row actions <strong>I / B / L</strong> on the Inv + Battery table to upload to Cloudinary.
               </p>
               <div className="grid-3">
@@ -2617,7 +2617,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
           )}
           {isHomeInvBatForm && !isComboForm && (
             <>
-              <p style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+              <p style={{ fontSize: 15, color: "#64748b", marginBottom: 12 }}>
                 Product type: <strong>Battery</strong> — ERP pricing fields (CD, DP, MRP FINAL) plus exchange and marketplace rates.
               </p>
               <div className="form-group">
@@ -2654,7 +2654,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
                 <label className="form-label">Warranty</label>
                 <input className="form-input" value={form.warranty} onChange={(e) => set("warranty", e.target.value)} />
               </div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "#475569", margin: "12px 0 8px" }}>Pricing</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#475569", margin: "12px 0 8px" }}>Pricing</div>
               <div className="grid-3">
                 <div className="form-group">
                   <label className="form-label">CD — cash discount (₹)</label>
@@ -2707,7 +2707,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
           )}
           {isLithiumIonForm && !isComboForm && !isHomeInvBatForm && !isInverterForm && !isTrolleyForm && (
             <>
-              <p style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+              <p style={{ fontSize: 15, color: "#64748b", marginBottom: 12 }}>
                 Product type: <strong>Lithium Ion Battery</strong> — ERP layout (same as Home Battery + Voltage). <strong>DP and CD are required.</strong>
               </p>
               <div className="form-group">
@@ -2797,7 +2797,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
           )}
           {isTrolleyForm && !isComboForm && !isHomeInvBatForm && !isInverterForm && !isLithiumIonForm && (
             <>
-              <p style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+              <p style={{ fontSize: 15, color: "#64748b", marginBottom: 12 }}>
                 Product type: <strong>Trolley</strong> — distributor pricing (DP, CD) and final customer price.
               </p>
               <div className="form-group">
@@ -2876,7 +2876,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
           )}
           {isInverterForm && !isComboForm && !isHomeInvBatForm && !isLithiumIonForm ? (
             <>
-              <p style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+              <p style={{ fontSize: 15, color: "#64748b", marginBottom: 12 }}>
                 Product type: <strong>Inverter</strong> (matches your inverter price sheet — no battery weight / scrap / OB fields).
               </p>
               <div className="form-group">
@@ -2900,7 +2900,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
                   onChange={(e) => set("productCapacity", e.target.value)}
                   placeholder="e.g. 1100 VA"
                 />
-                <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                <div style={{ fontSize: 14, color: "#64748b", marginTop: 4 }}>
                   Parsed VA:{" "}
                   <strong>
                     {parseVaFromSpec(String(form.productCapacity || "")) ||
@@ -2991,7 +2991,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
                   }
                 />
                 {isComboForm && (
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                  <div style={{ fontSize: 14, color: "#64748b", marginTop: 4 }}>
                     Parsed preview: <strong>{formatComboVaAhLine(form)}</strong>
                   </div>
                 )}
@@ -3142,17 +3142,17 @@ function MarketComparisonModal({ item, onSave, onClose }) {
         </div>
         <div className="modal-body">
           <div style={{ background: "#f9fafb", borderRadius: 10, padding: 16, marginBottom: 20 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#374151" }}>{item.model}</div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            <div style={{ fontSize: 17, fontWeight: 600, color: "#374151" }}>{item.model}</div>
+            <div style={{ fontSize: 15, color: "#6b7280", marginTop: 4 }}>
               {item.brand} · {item.type}
               {String(item.type || "").toLowerCase() === "inverter"
                 ? ` · ${Number(item.inverterVA) > 0 ? `${item.inverterVA} VA` : parseVaFromSpec(String(item.productCapacity || "")) > 0 ? `${parseVaFromSpec(String(item.productCapacity || ""))} VA` : "—"}`
                 : ` · ${item.ah}Ah`}
             </div>
             <div style={{ display: "flex", gap: 24, marginTop: 14 }}>
-              <div><div style={{ fontSize: 11, color: "#6b7280" }}>Your Buy Price</div><div style={{ fontSize: 18, fontWeight: 700, color: "#ef4444" }}>₹{Number(item.purchaseRate || 0).toLocaleString()}</div></div>
-              <div><div style={{ fontSize: 11, color: "#6b7280" }}>Your Sell Price</div><div style={{ fontSize: 18, fontWeight: 700, color: "#0ea5e9" }}>₹{sell.toLocaleString()}</div></div>
-              <div><div style={{ fontSize: 11, color: "#6b7280" }}>Market Average</div><div style={{ fontSize: 18, fontWeight: 700, color: "#d97706" }}>{avgMarket > 0 ? `₹${avgMarket.toLocaleString()}` : "—"}</div></div>
+              <div><div style={{ fontSize: 14, color: "#6b7280" }}>Your Buy Price</div><div style={{ fontSize: 22, fontWeight: 700, color: "#ef4444" }}>₹{Number(item.purchaseRate || 0).toLocaleString()}</div></div>
+              <div><div style={{ fontSize: 14, color: "#6b7280" }}>Your Sell Price</div><div style={{ fontSize: 22, fontWeight: 700, color: "#0ea5e9" }}>₹{sell.toLocaleString()}</div></div>
+              <div><div style={{ fontSize: 14, color: "#6b7280" }}>Market Average</div><div style={{ fontSize: 22, fontWeight: 700, color: "#d97706" }}>{avgMarket > 0 ? `₹${avgMarket.toLocaleString()}` : "—"}</div></div>
             </div>
           </div>
           {avgMarket > 0 && (
@@ -3161,8 +3161,8 @@ function MarketComparisonModal({ item, onSave, onClose }) {
               {diff < 0 ? `Your price is ₹${Math.abs(diff).toLocaleString()} cheaper than market average — competitive advantage!` : diff > 0 ? `Your price is ₹${diff.toLocaleString()} above market average — consider adjusting.` : `Your price matches the market average.`}
             </div>
           )}
-          <div className="section-title" style={{ fontSize: 13, marginBottom: 4 }}>Online Price Comparison</div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+          <div className="section-title" style={{ fontSize: 16, marginBottom: 4 }}>Online Price Comparison</div>
+          <div style={{ fontSize: 15, color: "#6b7280", marginBottom: 12 }}>
             Enter competitor prices to compare against your sell price. Changes are saved on this item.
           </div>
           {MARKET_PRICE_SOURCES.map((s) => {
@@ -3171,10 +3171,10 @@ function MarketComparisonModal({ item, onSave, onClose }) {
             return (
               <div key={s.key} className="comparison-card">
                 <div className="comparison-row" style={{ alignItems: "center" }}>
-                  <span className="comparison-source"><i className="ti ti-world" style={{ marginRight: 6, fontSize: 14, verticalAlign: "-2px" }}></i>{s.label}</span>
+                  <span className="comparison-source"><i className="ti ti-world" style={{ marginRight: 6, fontSize: 17, verticalAlign: "-2px" }}></i>{s.label}</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ color: "#6b7280", fontSize: 13 }}>₹</span>
+                      <span style={{ color: "#6b7280", fontSize: 16 }}>₹</span>
                       <input
                         className="form-input"
                         type="number"
@@ -3501,7 +3501,7 @@ function QuotationsPage({
       </div>
 
       <div className="card" style={{ marginBottom: 16, padding: 16 }}>
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+        <div style={{ fontSize: 15, color: "#6b7280", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>
           Create quotation
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
@@ -3523,13 +3523,13 @@ function QuotationsPage({
                 setShowNew(true);
               }}
             >
-              <span style={{ fontWeight: 700, fontSize: 13, color: "#111827" }}>{QUOTATION_KIND_LABELS[kind]}</span>
-              <span style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>Open wizard</span>
+              <span style={{ fontWeight: 700, fontSize: 16, color: "#111827" }}>{QUOTATION_KIND_LABELS[kind]}</span>
+              <span style={{ fontSize: 14, color: "#6b7280", marginTop: 4 }}>Open wizard</span>
             </button>
           ))}
         </div>
-        <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 10, marginBottom: 0 }}>
-          Deep link: <code style={{ fontSize: 11 }}>/shop/quotations?create=inverter</code> (combo, inverter, battery, car, bike)
+        <p style={{ fontSize: 14, color: "#9ca3af", marginTop: 10, marginBottom: 0 }}>
+          Deep link: <code style={{ fontSize: 14 }}>/shop/quotations?create=inverter</code> (combo, inverter, battery, car, bike)
         </p>
       </div>
 
@@ -3612,7 +3612,7 @@ function QuotationsPage({
             <div className="modal-header" style={{ flexShrink: 0 }}>
               <div>
                 <div className="modal-title">Quotation {detailQt.quoteKey || detailQt.id}</div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+                <div style={{ fontSize: 15, color: "#6b7280", marginTop: 4 }}>
                   {qtCustomer(detailQt)} · {qtPhone(detailQt)}
                 </div>
               </div>
@@ -3626,7 +3626,7 @@ function QuotationsPage({
               </div>
             </div>
             <div className="modal-body scrollable" style={{ flex: 1, minHeight: 0 }}>
-              <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+              <p style={{ fontSize: 15, color: "#6b7280", marginBottom: 12 }}>
                 Each row is one recommendation tier. PDF, WhatsApp, and invoice actions apply only to that tier.
               </p>
               <div className="table-wrap">
@@ -3655,8 +3655,8 @@ function QuotationsPage({
                           <td style={{ fontWeight: 600 }}>
                             {oid}: {opt.title || row?.optionLabel || row?.badge || "Option"}
                           </td>
-                          <td style={{ fontSize: 12, color: "#374151" }}>{bat}</td>
-                          <td style={{ fontSize: 12, color: "#374151" }}>{inv}</td>
+                          <td style={{ fontSize: 15, color: "#374151" }}>{bat}</td>
+                          <td style={{ fontSize: 15, color: "#374151" }}>{inv}</td>
                           <td style={{ fontWeight: 600 }}>₹{amt.toLocaleString("en-IN")}</td>
                           <td>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -3713,7 +3713,7 @@ function QuotationsPage({
                   alignItems: "center",
                 }}
               >
-                <span style={{ fontSize: 12, color: "#6b7280" }}>Whole document status:</span>
+                <span style={{ fontSize: 15, color: "#6b7280" }}>Whole document status:</span>
                 <button
                   type="button"
                   className="btn btn-sm btn-outline"
@@ -3863,13 +3863,13 @@ function NewQuotationModal({ inventory, onSave, onClose, existingCount }) {
               </select>
               <input className="form-input" type="number" value={it.qty} onChange={e => setItem(i, "qty", e.target.value)} style={{ width: 70 }} min="1" placeholder="Qty" />
               <input className="form-input" type="number" value={it.rate} onChange={e => setItem(i, "rate", e.target.value)} style={{ width: 100 }} placeholder="Rate" />
-              <div style={{ fontSize: 13, color: "#374151", fontWeight: 600, minWidth: 70 }}>₹{(Number(it.qty) * Number(it.rate)).toLocaleString()}</div>
+              <div style={{ fontSize: 16, color: "#374151", fontWeight: 600, minWidth: 70 }}>₹{(Number(it.qty) * Number(it.rate)).toLocaleString()}</div>
               {items.length > 1 && <button className="btn btn-sm btn-danger" onClick={() => removeItem(i)}><i className="ti ti-trash"></i></button>}
             </div>
           ))}
           <div style={{ background: "#f9fafb", borderRadius: 8, padding: 14, marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 14, color: "#6b7280" }}>Quotation Total</span>
-            <span style={{ fontSize: 22, fontWeight: 700, color: "#111827" }}>₹{total.toLocaleString()}</span>
+            <span style={{ fontSize: 17, color: "#6b7280" }}>Quotation Total</span>
+            <span style={{ fontSize: 28, fontWeight: 700, color: "#111827" }}>₹{total.toLocaleString()}</span>
           </div>
         </div>
         <div className="modal-footer">
@@ -3898,7 +3898,7 @@ function QuotationViewModal({ qt, onClose, onConvert }) {
                 <div className="inv-shop-sub">Ph: 9876543210</div>
               </div>
               <div className="inv-meta">
-                <div style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px" }}>Quotation</div>
+                <div style={{ fontSize: 14, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px" }}>Quotation</div>
                 <div className="inv-id">{qt.id}</div>
                 <div className="inv-date">Date: {qt.date}</div>
                 <div className="inv-date">Valid for: 7 days</div>
@@ -3907,7 +3907,7 @@ function QuotationViewModal({ qt, onClose, onConvert }) {
             <div className="inv-bill-to">
               <div className="inv-bill-label">Quote To</div>
               <div className="inv-bill-name">{qt.customer}</div>
-              <div style={{ fontSize: 12, color: "#666" }}>Ph: {qt.phone}</div>
+              <div style={{ fontSize: 15, color: "#666" }}>Ph: {qt.phone}</div>
             </div>
             <table className="inv-table">
               <thead><tr><th>#</th><th>Model</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
@@ -3930,7 +3930,7 @@ function QuotationViewModal({ qt, onClose, onConvert }) {
                 <div className="inv-total-row grand"><span>Total</span><span>₹{(qt.total + Math.round(qt.total * 0.18)).toLocaleString()}</span></div>
               </div>
             </div>
-            <div style={{ marginTop: 24, fontSize: 11, color: "#999", textAlign: "center" }}>Thank you for your enquiry · Prices subject to change · T&C apply</div>
+            <div style={{ marginTop: 24, fontSize: 14, color: "#999", textAlign: "center" }}>Thank you for your enquiry · Prices subject to change · T&C apply</div>
           </div>
         </div>
         <div className="modal-footer">
@@ -3951,7 +3951,7 @@ function QuotationCompareModal({ qt, inventory, onClose }) {
           <button className="close-btn" onClick={onClose}><i className="ti ti-x"></i></button>
         </div>
         <div className="modal-body">
-          <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
+          <div style={{ fontSize: 16, color: "#6b7280", marginBottom: 16 }}>
             Comparing your quotation prices for <strong style={{ color: "#374151" }}>{qt.customer}</strong> against live market prices:
           </div>
           {qt.items.map((it, i) => {
@@ -3963,13 +3963,13 @@ function QuotationCompareModal({ qt, inventory, onClose }) {
                 <div className="comparison-title">{it.model}</div>
                 <div className="comparison-row" style={{ marginBottom: 8 }}>
                   <span style={{ color: "#6b7280" }}>Your quoted price</span>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: "#0ea5e9" }}>₹{it.rate.toLocaleString()}</span>
+                  <span style={{ fontSize: 20, fontWeight: 700, color: "#0ea5e9" }}>₹{it.rate.toLocaleString()}</span>
                 </div>
                 {marketPrices.map((mp, j) => (
                   <div key={j} className="comparison-row">
-                    <span className="comparison-source"><i className="ti ti-world" style={{ marginRight: 4, fontSize: 13, verticalAlign: "-2px" }}></i>{mp.source}</span>
+                    <span className="comparison-source"><i className="ti ti-world" style={{ marginRight: 4, fontSize: 16, verticalAlign: "-2px" }}></i>{mp.source}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 13, color: "#374151" }}>₹{mp.price.toLocaleString()}</span>
+                      <span style={{ fontSize: 16, color: "#374151" }}>₹{mp.price.toLocaleString()}</span>
                       <span className={`badge ${it.rate < mp.price ? "badge-green" : "badge-red"}`}>
                         {it.rate < mp.price ? `₹${mp.price - it.rate} cheaper` : `₹${it.rate - mp.price} more`}
                       </span>
@@ -3977,7 +3977,7 @@ function QuotationCompareModal({ qt, inventory, onClose }) {
                   </div>
                 ))}
                 {marketPrices.length > 0 && (
-                  <div className={`profit-alert ${diff < 0 ? "gain" : "loss"}`} style={{ marginTop: 10, fontSize: 12 }}>
+                  <div className={`profit-alert ${diff < 0 ? "gain" : "loss"}`} style={{ marginTop: 10, fontSize: 15 }}>
                     <i className={`ti ${diff < 0 ? "ti-thumb-up" : "ti-alert-circle"}`} style={{ marginRight: 6 }}></i>
                     {diff < 0 ? `Your price is ₹${Math.abs(diff).toFixed(0)} below market avg — great competitive pricing!` : `Your price is ₹${Math.abs(diff).toFixed(0)} above market average.`}
                   </div>
@@ -4089,7 +4089,7 @@ function Invoices({ invoices, setInvoices, inventory, modal, setModal }) {
                         PDF
                       </a>
                     ) : (
-                      <span style={{ color: "#9ca3af", fontSize: 12 }}>—</span>
+                      <span style={{ color: "#9ca3af", fontSize: 15 }}>—</span>
                     )}
                   </td>
                   <td>
@@ -4247,13 +4247,13 @@ function NewInvoiceModal({ inventory, onSave, onClose, existingCount }) {
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <input className="form-input" type="number" value={reqVA} onChange={e => setReqVA(e.target.value)} style={{ width: 130 }} placeholder="Required VA" />
               <input className="form-input" type="number" value={reqAH} onChange={e => setReqAH(e.target.value)} style={{ width: 130 }} placeholder="Required AH" />
-              <span style={{ fontSize: 12, color: "#6b7280" }}>Suggests closest stock matching or exceeding the load.</span>
+              <span style={{ fontSize: 15, color: "#6b7280" }}>Suggests closest stock matching or exceeding the load.</span>
             </div>
             {(reqVA || reqAH) && (
               <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                {suggestions.length === 0 && <div style={{ fontSize: 12, color: "#dc2626" }}>No in-stock batteries match this load.</div>}
+                {suggestions.length === 0 && <div style={{ fontSize: 15, color: "#dc2626" }}>No in-stock batteries match this load.</div>}
                 {suggestions.map((s) => (
-                  <div key={s.battery.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                  <div key={s.battery.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 16 }}>
                     <span className={`badge ${s.meets ? "badge-green" : "badge-yellow"}`}>{s.meets ? "Fits" : "Under-spec"}</span>
                     <span style={{ fontWeight: 600, color: "#111827", flex: 1 }}>{invModelName(s.battery)}</span>
                     <span style={{ color: "#6b7280" }}>{s.va || "—"} VA · {s.ah || "—"} AH · Qty {invQty(s.battery)} · ₹{invSellRate(s.battery).toLocaleString("en-IN")}</span>
@@ -4286,11 +4286,11 @@ function NewInvoiceModal({ inventory, onSave, onClose, existingCount }) {
                   <input className="form-input" value={it.model} onChange={e => setItemField(i, "model", e.target.value)} style={{ flex: 1, minWidth: 90 }} placeholder="Model / description" />
                   <input className="form-input" type="number" value={it.qty} min="1" onChange={e => setItemField(i, "qty", e.target.value)} style={{ width: 60 }} placeholder="Qty" />
                   <input className="form-input" type="number" value={it.rate} onChange={e => setItemField(i, "rate", e.target.value)} style={{ width: 90 }} placeholder="Rate" />
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", minWidth: 80 }}>₹{(Number(it.qty) * Number(it.rate)).toLocaleString()}</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#374151", minWidth: 80 }}>₹{(Number(it.qty) * Number(it.rate)).toLocaleString()}</div>
                   {items.length > 1 && <button className="btn btn-sm btn-danger" onClick={() => removeItem(i)}><i className="ti ti-trash"></i></button>}
                 </div>
                 {outOfStock && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, fontSize: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, fontSize: 15 }}>
                     <span className="badge badge-red">Out of stock</span>
                     {alt ? (
                       <>
@@ -4308,13 +4308,13 @@ function NewInvoiceModal({ inventory, onSave, onClose, existingCount }) {
             );
           })}
           <div style={{ background: "#f9fafb", borderRadius: 10, padding: 16, marginTop: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#6b7280" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 16, color: "#6b7280" }}>
               <span>Subtotal</span><span>₹{subtotal.toLocaleString()}</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#6b7280" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 16, color: "#6b7280" }}>
               <span>GST (18%)</span><span>₹{gst.toLocaleString()}</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 5px", fontSize: 18, fontWeight: 700, color: "#111827", borderTop: "1px solid #e5e7eb", marginTop: 5 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 5px", fontSize: 22, fontWeight: 700, color: "#111827", borderTop: "1px solid #e5e7eb", marginTop: 5 }}>
               <span>Total</span><span>₹{total.toLocaleString()}</span>
             </div>
           </div>

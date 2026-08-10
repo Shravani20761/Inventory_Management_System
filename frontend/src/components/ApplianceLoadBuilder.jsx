@@ -34,11 +34,11 @@ export function ApplianceLoadBuilder({ appliances, onChange }) {
           + Add appliance
         </button>
       </div>
-      <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+      <p style={{ fontSize: 15, color: "#6b7280", marginBottom: 10 }}>
         Wattages come from the master appliance table — totals are calculated on the server for quotations.
       </p>
       {!appliances?.length && (
-        <p style={{ fontSize: 13, color: "#92400e", marginBottom: 8 }}>
+        <p style={{ fontSize: 16, color: "#92400e", marginBottom: 8 }}>
           Add appliances below, or leave empty to use <b>room size</b> estimated load instead.
         </p>
       )}

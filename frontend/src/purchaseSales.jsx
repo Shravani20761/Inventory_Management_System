@@ -254,14 +254,14 @@ function NewPurchaseModal({ inventory, setInventory, onSave, onClose }) {
             <div className="form-group">
               <label className="form-label">Upload Bill (PDF/Image)</label>
               <input type="file" accept="image/*,.pdf" onChange={handleBillUpload} />
-              {billFileName && <div style={{ fontSize: 12, color: "#10b981", marginTop: 4 }}>{billFileName} attached</div>}
+              {billFileName && <div style={{ fontSize: 15, color: "#10b981", marginTop: 4 }}>{billFileName} attached</div>}
             </div>
           </div>
           <div className="form-group">
             <label className="form-label">Billing Notes</label>
             <input className="form-input" value={billDetails} onChange={(e) => setBillDetails(e.target.value)} />
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontSize: 13 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontSize: 16 }}>
             <input type="checkbox" checked={updateInventory} onChange={(e) => setUpdateInventory(e.target.checked)} />
             Add items to inventory stock
           </label>
@@ -295,7 +295,7 @@ function NewPurchaseModal({ inventory, setInventory, onSave, onClose }) {
           ))}
           <div style={{ background: "#f9fafb", borderRadius: 8, padding: 14, marginTop: 12, display: "flex", justifyContent: "space-between" }}>
             <span style={{ color: "#6b7280" }}>Purchase Total</span>
-            <span style={{ fontSize: 20, fontWeight: 700 }}>₹{total.toLocaleString()}</span>
+            <span style={{ fontSize: 24, fontWeight: 700 }}>₹{total.toLocaleString()}</span>
           </div>
         </div>
         <div className="modal-footer">

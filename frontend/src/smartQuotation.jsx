@@ -130,7 +130,7 @@ function FilterChips({ chips = [] }) {
             borderRadius: 999,
             background: "#e0f2fe",
             color: "#0369a1",
-            fontSize: 12,
+            fontSize: 15,
             fontWeight: 600,
           }}
         >
@@ -240,7 +240,7 @@ function OptionCard({
       style={{ cursor: onSelect ? "pointer" : "default", borderColor }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>{label}</div>
+        <div style={{ fontWeight: 700, fontSize: 17 }}>{label}</div>
         <span className={`badge ${badgeClass(option.badge || option.type)}`}>{option.badge || option.type || "Option"}</span>
       </div>
       {(hasInv || hasBat) && (
@@ -278,7 +278,7 @@ function OptionCard({
           ) : null}
         </div>
       )}
-      <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6 }}>
+      <div style={{ fontSize: 15, color: "#6b7280", lineHeight: 1.6 }}>
         {hasInv && (
           <div>
             <strong style={{ color: "#374151" }}>Inverter:</strong>{" "}
@@ -294,15 +294,15 @@ function OptionCard({
             {battery.modelName || option.batteryName || "—"} ({battery.capacityAh || option.batteryAh || "—"} Ah
             {battery.batteryType ? ` · ${battery.batteryType}` : ""})
             {(battery.withOldPrice || battery.withoutOldPrice) && batteryExchangeMode === "showBoth" && (
-              <span style={{ display: "block", fontSize: 11, marginTop: 2 }}>
+              <span style={{ display: "block", fontSize: 14, marginTop: 2 }}>
                 With old: ₹{batWith.toLocaleString("en-IN")} · Without old: ₹{batWithout.toLocaleString("en-IN")}
               </span>
             )}
             {(battery.withOldPrice || battery.withoutOldPrice) && batteryExchangeMode === "withOld" && (
-              <span style={{ display: "block", fontSize: 11, marginTop: 2 }}>With old battery: ₹{batWith.toLocaleString("en-IN")}</span>
+              <span style={{ display: "block", fontSize: 14, marginTop: 2 }}>With old battery: ₹{batWith.toLocaleString("en-IN")}</span>
             )}
             {(battery.withOldPrice || battery.withoutOldPrice) && batteryExchangeMode === "withoutOld" && (
-              <span style={{ display: "block", fontSize: 11, marginTop: 2 }}>Without old battery: ₹{batWithout.toLocaleString("en-IN")}</span>
+              <span style={{ display: "block", fontSize: 14, marginTop: 2 }}>Without old battery: ₹{batWithout.toLocaleString("en-IN")}</span>
             )}
           </div>
         )}
@@ -311,24 +311,24 @@ function OptionCard({
         </div>
         {option.comparisonNote && <div style={{ marginTop: 6, fontStyle: "italic" }}>{option.comparisonNote}</div>}
         {option.recommendationType && (
-          <div style={{ marginTop: 6, fontSize: 11, color: "#0369a1" }}>
+          <div style={{ marginTop: 6, fontSize: 14, color: "#0369a1" }}>
             <strong>Mode:</strong> {option.recommendationType}
           </div>
         )}
         {option.note && <div style={{ marginTop: 6 }}>{option.note}</div>}
       </div>
       {services > 0 && (
-        <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6 }}>
+        <div style={{ fontSize: 14, color: "#6b7280", marginTop: 6 }}>
           Base combo ₹{Number(base - services).toLocaleString("en-IN")} + services ₹{Number(services).toLocaleString("en-IN")}
         </div>
       )}
-      <div style={{ marginTop: 12, fontSize: 20, fontWeight: 700, color: "#2563eb" }}>
+      <div style={{ marginTop: 12, fontSize: 24, fontWeight: 700, color: "#2563eb" }}>
         ₹{Number(price).toLocaleString("en-IN")}
       </div>
       {showQuotationActions ? (
         <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }} onClick={(e) => e.stopPropagation()}>
           {createdQuotation ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 14 }}>
               <span style={{ color: "#374151", fontWeight: 600 }}>{createdQuotation.quoteKey || createdQuotation.id}</span>
               <span className={`badge ${quotationStatusBadgeClass(createdQuotation.status)}`}>{createdQuotation.status || "Pending"}</span>
             </div>
@@ -374,7 +374,7 @@ function OptionCard({
         </div>
       ) : (
         onSelect && (
-          <div style={{ marginTop: 8, fontSize: 11, color: selected ? "#0369a1" : "#9ca3af" }}>
+          <div style={{ marginTop: 8, fontSize: 14, color: selected ? "#0369a1" : "#9ca3af" }}>
             {selected ? "Selected for PDF" : "Click card to select"}
           </div>
         )
@@ -877,7 +877,7 @@ export function SmartQuotationModal({
         <div className="modal-header">
           <div>
             <div className="modal-title">Quotation — Inverter + Battery Options</div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            <div style={{ fontSize: 15, color: "#6b7280", marginTop: 4 }}>
               Compare options · Create quotation (generates PDF) · Approve &amp; send on WhatsApp when ready
             </div>
           </div>
@@ -1010,7 +1010,7 @@ export function SmartQuotationModal({
                     </option>
                   ))}
                 </select>
-                <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                <div style={{ fontSize: 14, color: "#64748b", marginTop: 4 }}>
                   {form.recommendationMode === RECOMMENDATION_MODE_DYNAMIC
                     ? "Pairs separate inverter + battery SKUs from inverter_inventory and battery_inventory (exact standard VA/Ah)."
                     : "Uses ready-made bundles from Inv + Battery combo inventory (promotional / festival offers)."}
@@ -1029,7 +1029,7 @@ export function SmartQuotationModal({
                     value={form.inverterBrand}
                     onChange={(e) => set("inverterBrand", e.target.value)}
                   />
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: 12 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: 15 }}>
                     <input
                       type="checkbox"
                       checked={form.inverterBrandAny}
@@ -1047,7 +1047,7 @@ export function SmartQuotationModal({
                     value={form.batteryBrand}
                     onChange={(e) => set("batteryBrand", e.target.value)}
                   />
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: 12 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: 15 }}>
                     <input
                       type="checkbox"
                       checked={form.batteryBrandAny}
@@ -1071,7 +1071,7 @@ export function SmartQuotationModal({
                       </option>
                     ))}
                   </select>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                  <div style={{ fontSize: 14, color: "#64748b", marginTop: 4 }}>
                     Same brand only pairs Exide+Exide, Luminous+Luminous, etc. Mixed allows cross-brand combos.
                   </div>
                 </div>
@@ -1094,7 +1094,7 @@ export function SmartQuotationModal({
                       display: "flex",
                       alignItems: "center",
                       gap: 8,
-                      fontSize: 13,
+                      fontSize: 16,
                       padding: "8px 10px",
                       border: "1px solid #e5e7eb",
                       borderRadius: 8,
@@ -1104,7 +1104,7 @@ export function SmartQuotationModal({
                     <input type="checkbox" checked={Boolean(form[key])} onChange={(e) => set(key, e.target.checked)} />
                     {label}
                     {form[key] && (
-                      <span style={{ marginLeft: "auto", fontSize: 11, color: "#059669" }}>
+                      <span style={{ marginLeft: "auto", fontSize: 14, color: "#059669" }}>
                         ₹{Number(form[`${key}Amount`] ?? defaultAmount).toLocaleString("en-IN")}
                       </span>
                     )}
@@ -1143,7 +1143,7 @@ export function SmartQuotationModal({
                           display: "flex",
                           alignItems: "center",
                           gap: 8,
-                          fontSize: 13,
+                          fontSize: 16,
                           padding: "8px 10px",
                           border: "1px solid #e5e7eb",
                           borderRadius: 8,
@@ -1161,7 +1161,7 @@ export function SmartQuotationModal({
                       </label>
                     ))}
                   </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>
+                  <div style={{ fontSize: 14, color: "#64748b", marginTop: 6 }}>
                     Leave all unchecked to include every battery type. Select one or more to restrict recommendations.
                   </div>
                   <FilterChips chips={activeFilterChips(form, preview)} />
@@ -1219,7 +1219,7 @@ export function SmartQuotationModal({
           <div className="section-title" style={{ marginTop: 8 }}>
             Add items from inventory (optional)
           </div>
-          <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+          <p style={{ fontSize: 15, color: "#6b7280", marginBottom: 10 }}>
             Pick extra batteries/accessories — prices are taken from your current stock sell rate.
           </p>
           <div className="item-row" style={{ marginBottom: 12 }}>
@@ -1239,7 +1239,7 @@ export function SmartQuotationModal({
             <div className="card" style={{ marginBottom: 16, padding: 12 }}>
               {extraItems.map((it, idx) => (
                 <div key={idx} className="item-row">
-                  <span style={{ flex: 1, fontSize: 13 }}>
+                  <span style={{ flex: 1, fontSize: 16 }}>
                     {it.model} · ₹{Number(it.rate).toLocaleString("en-IN")} × {it.qty}
                   </span>
                   <button type="button" className="btn btn-sm btn-danger" onClick={() => removeExtra(idx)}>
@@ -1253,11 +1253,11 @@ export function SmartQuotationModal({
             </div>
           )}
 
-          <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+          <label style={{ display: "block", fontSize: 15, color: "#6b7280", marginBottom: 12 }}>
             Recommendation sheets are for comparing options only. WhatsApp sharing happens from the final quotation (Stage 2).
           </label>
           {!preview?.suggestedOptions?.length && !result && (
-            <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+            <p style={{ fontSize: 15, color: "#6b7280", marginBottom: 12 }}>
               Tip: click <strong>Preview options</strong> first, or save directly — options will be built automatically from inventory.
             </p>
           )}
@@ -1279,15 +1279,15 @@ export function SmartQuotationModal({
                   marginBottom: 16,
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: 20 }}>
                   {QUOTATION_KIND_LABELS[preview.quotationKind] || "Quotation"} — {form.customerName || "customer"}
                   {preview.recommendationMode && (
-                    <span style={{ fontWeight: 500, fontSize: 13, marginLeft: 8, opacity: 0.9 }}>
+                    <span style={{ fontWeight: 500, fontSize: 16, marginLeft: 8, opacity: 0.9 }}>
                       · {RECOMMENDATION_MODE_LABELS[preview.recommendationMode] || preview.recommendationMode}
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 13, opacity: 0.9, marginTop: 4 }}>
+                <div style={{ fontSize: 16, opacity: 0.9, marginTop: 4 }}>
                   {(preview.flatType || preview.backupHours != null) && (
                     <>
                       {preview.flatType ? `${preview.flatType} · ` : ""}
@@ -1308,7 +1308,7 @@ export function SmartQuotationModal({
                   )}
                 </div>
                 {(preview.inverterRange || preview.batteryRange) && (
-                  <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6 }}>
+                  <div style={{ fontSize: 15, opacity: 0.85, marginTop: 6 }}>
                     {preview.inverterRange ? `Inverter: ${preview.inverterRange}` : ""}
                     {preview.inverterRange && preview.batteryRange ? " · " : ""}
                     {preview.batteryRange ? `Battery: ${preview.batteryRange}` : ""}
@@ -1322,7 +1322,7 @@ export function SmartQuotationModal({
                       padding: 12,
                       background: "rgba(255,255,255,0.08)",
                       borderRadius: 8,
-                      fontSize: 12,
+                      fontSize: 15,
                       lineHeight: 1.6,
                     }}
                   >
@@ -1355,10 +1355,10 @@ export function SmartQuotationModal({
                   </div>
                 )}
               </div>
-              <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+              <p style={{ fontSize: 15, color: "#6b7280", marginBottom: 12 }}>
                 Prices and tiers use your branch inventory first{userBranchName ? ` (${userBranchName})` : ""}. Other branches appear only when stock is unavailable here.
               </p>
-              <p style={{ fontSize: 12, color: "#0369a1", marginBottom: 12, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 15, color: "#0369a1", marginBottom: 12, lineHeight: 1.5 }}>
                 <strong>Per option:</strong> use <strong>Create quotation</strong> on each row you want to offer — each gets its own saved quotation and PDF.
                 Use <strong>PDF</strong> to preview or regenerate that row&apos;s file. Use <strong>Approve &amp; send WhatsApp</strong> only for the quote you are sending to the customer.
               </p>
@@ -1372,12 +1372,12 @@ export function SmartQuotationModal({
               )}
               {preview.crossBranchHints?.length > 0 && (
                 <div className="card" style={{ marginBottom: 12, padding: 12, background: "#eff6ff", border: "1px solid #bfdbfe" }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Available at other branches</div>
+                  <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Available at other branches</div>
                   {preview.crossBranchHints.slice(0, 5).map((hint, i) => (
                     <div
                       key={i}
                       style={{
-                        fontSize: 12,
+                        fontSize: 15,
                         marginBottom: 10,
                         paddingBottom: 10,
                         borderBottom: i < preview.crossBranchHints.slice(0, 5).length - 1 ? "1px solid #dbeafe" : "none",
@@ -1538,7 +1538,7 @@ export function SmartQuotationViewModal({ qt, onClose }) {
           </button>
         </div>
         <div className="modal-body scrollable" style={{ maxHeight: "70vh" }}>
-          <div style={{ marginBottom: 16, fontSize: 13, color: "#6b7280" }}>
+          <div style={{ marginBottom: 16, fontSize: 16, color: "#6b7280" }}>
             <div>
               <strong>Type:</strong>{" "}
               {qt.quotationKind ? QUOTATION_KIND_LABELS[qt.quotationKind] || qt.quotationKind : "—"}
@@ -1560,7 +1560,7 @@ export function SmartQuotationViewModal({ qt, onClose }) {
               </div>
             ) : null}
             {sizing?.lines?.length ? (
-              <div style={{ marginTop: 8, fontSize: 12 }}>
+              <div style={{ marginTop: 8, fontSize: 15 }}>
                 <strong>Sized at:</strong> {sizing.roundedVA} VA / {sizing.roundedAH} Ah (from appliance table)
               </div>
             ) : null}
@@ -1573,9 +1573,9 @@ export function SmartQuotationViewModal({ qt, onClose }) {
 
           {qt.extraItems?.length > 0 && (
             <div className="card" style={{ marginBottom: 16, padding: 12 }}>
-              <div className="section-title" style={{ fontSize: 13 }}>Additional inventory items</div>
+              <div className="section-title" style={{ fontSize: 16 }}>Additional inventory items</div>
               {qt.extraItems.map((it, i) => (
-                <div key={i} style={{ fontSize: 13, padding: "4px 0" }}>
+                <div key={i} style={{ fontSize: 16, padding: "4px 0" }}>
                   {it.model} — ₹{Number(it.rate).toLocaleString("en-IN")} × {it.qty}
                 </div>
               ))}

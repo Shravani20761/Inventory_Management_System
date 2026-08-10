@@ -6,7 +6,7 @@ function Card({ title, children, className = "" }) {
   return (
     <div className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
       <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-      <div className="mt-3 text-sm text-slate-600">{children}</div>
+      <div className="mt-3 text-base text-slate-600">{children}</div>
     </div>
   );
 }
@@ -28,14 +28,14 @@ export default function RoleHome() {
   return (
     <div className="min-h-full p-6 md:p-8">
       <header className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dashboard</p>
+        <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Dashboard</p>
         <h1 className="mt-1 text-2xl font-bold text-slate-900">Welcome back{user?.name ? `, ${user.name}` : ""}</h1>
         <p className="mt-2 max-w-2xl text-slate-600">{intros[role] || intros.employee}</p>
       </header>
 
       <div className="mb-6 flex flex-wrap gap-2">
-        <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-medium capitalize text-white">{role}</span>
-        {user?.email && <span className="rounded-full bg-slate-200 px-3 py-1 text-xs text-slate-700">{user.email}</span>}
+        <span className="rounded-full bg-slate-900 px-3 py-1 text-sm font-medium capitalize text-white">{role}</span>
+        {user?.email && <span className="rounded-full bg-slate-200 px-3 py-1 text-sm text-slate-700">{user.email}</span>}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

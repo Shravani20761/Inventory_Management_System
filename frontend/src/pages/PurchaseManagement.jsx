@@ -231,7 +231,7 @@ function MiniStat({ label, value, color }) {
   return (
     <div className="stat-card" style={{ borderLeft: `4px solid ${color}` }}>
       <div className="stat-label">{label}</div>
-      <div className="stat-value" style={{ color, fontSize: 18 }}>{value}</div>
+      <div className="stat-value" style={{ color, fontSize: 22 }}>{value}</div>
     </div>
   );
 }
@@ -393,7 +393,7 @@ function PurchaseEntryModal({ inventory, user, onClose, onSaved }) {
             <i className="ti ti-plus"></i> Add product line
           </button>
 
-          <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "12px 0", fontSize: 13 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "12px 0", fontSize: 16 }}>
             <input type="checkbox" checked={form.updateInventory} onChange={(e) => set("updateInventory", e.target.checked)} />
             Auto-increase inventory stock for linked SKUs (append qty only — never deletes existing stock)
           </label>
@@ -561,7 +561,7 @@ function PurchaseDetailModal({ purchaseId, onClose, onRefresh }) {
           {(data.payments || []).length > 0 && (
             <>
               <div className="section-title">Payment history</div>
-              <ul style={{ fontSize: 13 }}>
+              <ul style={{ fontSize: 16 }}>
                 {data.payments.map((p) => (
                   <li key={p._id}>{p.paymentDate} · {p.paymentMode} · ₹{Number(p.amount).toLocaleString("en-IN")} · {p.status}</li>
                 ))}
@@ -572,7 +572,7 @@ function PurchaseDetailModal({ purchaseId, onClose, onRefresh }) {
           {(data.reminderLogs || []).length > 0 && (
             <>
               <div className="section-title">Reminder logs</div>
-              <ul style={{ fontSize: 12, color: "#64748b" }}>
+              <ul style={{ fontSize: 15, color: "#64748b" }}>
                 {data.reminderLogs.slice(0, 10).map((r) => (
                   <li key={r._id}>{new Date(r.sentAt).toLocaleString()} · {r.daysBeforeDue}d before · {r.success ? "Sent" : "Failed"}</li>
                 ))}

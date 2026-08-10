@@ -55,7 +55,7 @@ export default function Invoices() {
 
       <div className="space-y-3">
         {invoices.map((inv) => (
-          <div key={inv.id ?? inv.invoiceNumber} className="rounded-lg border bg-white p-4 text-sm">
+          <div key={inv.id ?? inv.invoiceNumber} className="rounded-lg border bg-white p-4 text-base">
             <strong>{inv.invoiceNumber}</strong> — {inv.customerDetails?.name} — ₹{Number(inv.totalAmount ?? inv.total).toLocaleString()}
             {(inv.cloudinaryInvoiceUrl || inv.invoicePdfUrl) && (
               <a href={inv.cloudinaryInvoiceUrl || inv.invoicePdfUrl} className="ml-2 text-sky-600 underline" target="_blank" rel="noreferrer">PDF</a>
