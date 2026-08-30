@@ -31,6 +31,7 @@ import { connectMongo, isMongoConnected } from "./config/mongodb.js";
 import "./config/registerCatalogModels.js";
 import { bootstrapAdminIfEmpty } from "./services/authService.js";
 import { requireAuth, requireRoles } from "./middleware/authMiddleware.js";
+import { attachBranchScope } from "./middleware/branchScopeMiddleware.js";
 import { profileController, registerController } from "./controllers/authController.js";
 
 import authRoutes from "./routes/auth.js";
@@ -50,6 +51,7 @@ import inventoryCategoryRoutes from "./routes/inventoryCategoryRoutes.js";
 import syncRoutes from "./routes/sync.js";
 import usersRoutes from "./routes/users.js";
 import branchesRoutes from "./routes/branches.js";
+import analyticsRoutes from "./routes/analytics.js";
 import stockTransfersRoutes from "./routes/stockTransfers.js";
 import purchaseManagementRoutes from "./routes/purchaseManagement.js";
 import purchaseBillsRoutes from "./routes/purchaseBills.js";
@@ -104,7 +106,7 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "X-Branch-Id", "X-Act-As-Branch"],
     optionsSuccessStatus: 204,
   }),
 );
@@ -157,6 +159,7 @@ app.post("/api/register", requireAuth, requireRoles("superAdmin", "admin"), regi
 
 const protectedApi = express.Router();
 protectedApi.use(requireAuth);
+protectedApi.use(attachBranchScope);
 protectedApi.use("/inventory", inventoryRoutes);
 protectedApi.use("/products", productsRoutes);
 protectedApi.use("/purchases", purchasesRoutes);
@@ -175,6 +178,7 @@ protectedApi.use("/stock-transfers", stockTransfersRoutes);
 protectedApi.use("/sync", syncRoutes);
 protectedApi.use("/users", usersRoutes);
 protectedApi.use("/branches", branchesRoutes);
+protectedApi.use("/analytics", analyticsRoutes);
 protectedApi.use("/vehicles", vehiclesRoutes);
 protectedApi.use("/", inventoryCategoryRoutes);
 protectedApi.post("/recommend-combo", recommendComboController);

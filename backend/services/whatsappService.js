@@ -176,8 +176,9 @@ function buildMetaErrorHint(message, errObj) {
   return undefined;
 }
 
-export async function sendQuotationWhatsApp({ to, customerName, publicUrl, fileName, optionCount }) {
-  const caption = `Hello ${customerName || "Customer"},\n\nYour battery & inverter quotation (${optionCount || ""} options) from Sharma Battery Store / POWERTECH is attached.\n\nThank you!`;
+export async function sendQuotationWhatsApp({ to, customerName, publicUrl, fileName, optionCount, companyName }) {
+  const brand = companyName || "BatteryMela";
+  const caption = `Hello ${customerName || "Customer"},\n\nYour battery & inverter quotation (${optionCount || ""} options) from *${brand}* is attached.\n\nThank you!`;
   return sendWhatsAppDocument({
     to,
     documentUrl: publicUrl,
@@ -187,9 +188,10 @@ export async function sendQuotationWhatsApp({ to, customerName, publicUrl, fileN
 }
 
 /** Recommendation sheet (Stage 1) — multi-option comparison PDF. */
-export async function sendRecommendationSheetWhatsApp({ to, customerName, publicUrl, fileName, optionCount, sheetKey }) {
+export async function sendRecommendationSheetWhatsApp({ to, customerName, publicUrl, fileName, optionCount, sheetKey, companyName }) {
+  const brand = companyName || "BatteryMela";
   const ref = sheetKey ? ` (${sheetKey})` : "";
-  const caption = `Hello ${customerName || "Customer"},\n\nYour *Power Backup Recommendation Sheet*${ref} from *BatteryMela* is attached.\n\nWe have shared ${optionCount || "several"} package option(s) for your review. Please choose one option and we will prepare your final quotation.\n\nThank you!`;
+  const caption = `Hello ${customerName || "Customer"},\n\nYour *Power Backup Recommendation Sheet*${ref} from *${brand}* is attached.\n\nWe have shared ${optionCount || "several"} package option(s) for your review. Please choose one option and we will prepare your final quotation.\n\nThank you!`;
   return sendWhatsAppDocument({
     to,
     documentUrl: publicUrl,
@@ -198,8 +200,9 @@ export async function sendRecommendationSheetWhatsApp({ to, customerName, public
   });
 }
 
-export async function sendInvoiceWhatsApp({ to, customerName, invoiceNumber, totalAmount, cloudinaryUrl }) {
-  const caption = `Hello ${customerName || "Customer"},\n\nYour tax invoice *${invoiceNumber}* is ready.\nTotal: *Rs ${Number(totalAmount).toLocaleString("en-IN")}*\n\n— Sharma Battery Store`;
+export async function sendInvoiceWhatsApp({ to, customerName, invoiceNumber, totalAmount, cloudinaryUrl, companyName }) {
+  const brand = companyName || "BatteryMela";
+  const caption = `Hello ${customerName || "Customer"},\n\nYour tax invoice *${invoiceNumber}* is ready.\nTotal: *Rs ${Number(totalAmount).toLocaleString("en-IN")}*\n\n— ${brand}`;
   return sendWhatsAppDocument({
     to,
     documentUrl: cloudinaryUrl,

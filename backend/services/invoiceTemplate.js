@@ -79,7 +79,15 @@ export async function renderInvoiceHtml(invoice) {
   const chargesHtml = chargeRows(invoice.additionalCharges);
   const scrap = Number(invoice.scrapAdjustment ?? 0);
   const today = invoice.date ?? new Date(invoice.createdAt || Date.now()).toISOString().slice(0, 10);
-  const b = BATTERYMELA_BRAND;
+  const company = invoice.company || {};
+  const companyName = company.name || process.env.BATTERYMELA_NAME || "BatteryMela";
+  const b = {
+    ...BATTERYMELA_BRAND,
+    gstin: company.gstin || BATTERYMELA_BRAND.gstin,
+    phone: company.phone || BATTERYMELA_BRAND.phone,
+    email: company.email || BATTERYMELA_BRAND.email,
+    address: company.address || BATTERYMELA_BRAND.address,
+  };
 
   let systemSpecsImages = "";
   if (invoice.inverter || invoice.battery) {
@@ -111,8 +119,8 @@ export async function renderInvoiceHtml(invoice) {
   }
 
   const logoBlock = logoUrl
-    ? `<img src="${logoUrl}" alt="BatteryMela Logo" class="company-logo" />`
-    : `<div class="logo-fallback">BatteryMela</div>`;
+    ? `<img src="${logoUrl}" alt="${companyName} Logo" class="company-logo" />`
+    : `<div class="logo-fallback">${companyName}</div>`;
 
   return `<!doctype html><html><head><meta charset="utf-8"/><style>
     @page { size: A4 portrait; margin: 10mm; }
@@ -150,6 +158,7 @@ export async function renderInvoiceHtml(invoice) {
         ${invoice.quotationId ? `<div><span class="meta-label">Quotation:</span> ${invoice.quotationId}</div>` : ""}
         <div><span class="meta-label">Date:</span> ${today}</div>
         <div><span class="meta-label">GSTIN:</span> ${b.gstin}</div>
+        ${company.branchName ? `<div><span class="meta-label">Branch:</span> ${company.branchName}</div>` : ""}
       </div>
     </div>
 
@@ -213,7 +222,7 @@ export async function renderInvoiceHtml(invoice) {
     }
 
     <div class="footer">
-      <strong style="color:${b.primary}">Thank you for choosing BatteryMela</strong><br/>
+      <strong style="color:${b.primary}">Thank you for choosing ${companyName}</strong><br/>
       ${b.phone} · ${b.email}<br/>${b.address}
     </div>
   </div></body></html>`;

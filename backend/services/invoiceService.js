@@ -11,6 +11,7 @@ import {
   buildInvoiceDraftFromQuotation,
   normalizeInvoicePayload,
 } from "./invoiceConversionService.js";
+import { enrichDocCompany } from "./branchScopeService.js";
 import mongoose from "mongoose";
 
 async function nextInvoiceNumber() {
@@ -40,9 +41,13 @@ function normalizeInvoiceItem(item, inventory) {
   };
 }
 
-export async function listInvoices({ branchId = null, isSuperAdmin = false } = {}) {
+export async function listInvoices({ branchId = null, isSuperAdmin = false, allBranches = false } = {}) {
   const q = {};
-  if (!isSuperAdmin && branchId) q.branchId = new mongoose.Types.ObjectId(branchId);
+  if (isSuperAdmin && (allBranches || !branchId)) {
+    /* all */
+  } else if (branchId) {
+    q.branchId = new mongoose.Types.ObjectId(branchId);
+  }
   const docs = await Invoice.find(q).sort({ createdAt: -1 }).lean();
   return docs.map((d) => ({
     ...d,
@@ -178,6 +183,8 @@ export async function generateInvoice(payload, { branchId = null, isSuperAdmin =
     console.log("[invoice] Stock deducted for", stockItems.length, "line(s)");
   }
 
+  invoice.branchId = branchId || payload.branchId || invoice.branchId || null;
+  await enrichDocCompany(invoice);
   const pdf = await generateInvoicePdf(invoice);
 
   let cloudinaryInvoiceUrl = "";
@@ -207,6 +214,7 @@ export async function generateInvoice(payload, { branchId = null, isSuperAdmin =
       invoiceNumber: invoice.invoiceNumber,
       totalAmount: invoice.totalAmount ?? invoice.finalTotal,
       cloudinaryUrl: whatsappUrl.startsWith("http") ? whatsappUrl : undefined,
+      companyName: invoice.company?.name,
     });
     invoice.invoiceSent = Boolean(whatsapp.sent);
     invoice.sentToWhatsapp = invoice.invoiceSent;

@@ -52,6 +52,20 @@ export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+/** Attach auth + HQ branch act-as headers to any fetch. */
+export function authHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  try {
+    const actAs = localStorage.getItem("batterypro_act_as_branch");
+    if (actAs) headers["X-Branch-Id"] = actAs;
+  } catch {
+    /* ignore */
+  }
+  return headers;
+}
+
 export function getStoredUser() {
   try {
     const raw = localStorage.getItem(USER_KEY);
@@ -80,6 +94,13 @@ async function request(path, options = {}) {
     ...options.headers,
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  // HQ Admin act-as branch (managers ignore this server-side)
+  try {
+    const actAs = localStorage.getItem("batterypro_act_as_branch");
+    if (actAs) headers["X-Branch-Id"] = actAs;
+  } catch {
+    /* ignore */
+  }
 
   let res;
   try {
@@ -102,7 +123,12 @@ async function request(path, options = {}) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    const msg = err.error || res.statusText || "Request failed";
+    let msg = err.error || res.statusText || "Request failed";
+    // Express default 404 has empty body → statusText "Not Found"
+    if (res.status === 404 && (!err.error || err.error === "Not Found") && String(path).startsWith("/branches")) {
+      msg =
+        "Branch API route not found on the server (PATCH /api/branches/:id). Restart the backend (npm run dev) so the latest branches routes are loaded.";
+    }
     if (res.status === 502 || res.status === 503) {
       throw new Error(
         "API server not responding (Bad Gateway). Stop all terminals, then run: npm run dev — wait until you see 'BatteryPro API running at http://localhost:3001'."
@@ -290,7 +316,7 @@ export const api = {
         const token = getToken();
         const res = await fetch(`${API_BASE}/vehicles/admin/import`, {
           method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: authHeaders(),
           body: form,
         });
         if (!res.ok) {
@@ -302,7 +328,7 @@ export const api = {
       downloadTemplate: async () => {
         const token = getToken();
         const res = await fetch(`${API_BASE}/vehicles/admin/import-template`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: authHeaders(),
         });
         if (!res.ok) throw new Error("Template download failed");
         const text = await res.text();
@@ -407,7 +433,7 @@ export const api = {
     const token = getToken();
     const res = await fetch(`${API_BASE}${p}`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: authHeaders(),
       body: form,
     });
     if (res.status === 401) {
@@ -461,7 +487,7 @@ export const api = {
     const token = getToken();
     const res = await fetch(`${API_BASE}${base}/upload/preview`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: authHeaders(),
       body: form,
     });
     if (res.status === 401) {
@@ -509,7 +535,7 @@ export const api = {
       try {
         const res = await fetch(`${API_BASE}${path}`, {
           method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: authHeaders(),
           body: form,
         });
         if (res.status === 401) {
@@ -555,7 +581,7 @@ export const api = {
     const token = getToken();
     const res = await fetch(`${API_BASE}/inv-combos/${encodeURIComponent(String(mongoId))}/upload-image`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: authHeaders(),
       body: form,
     });
     if (res.status === 401) {
@@ -577,7 +603,7 @@ export const api = {
     const token = getToken();
     const res = await fetch(`${API_BASE}/inventory/${encodeURIComponent(String(mongoId))}/upload-image`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: authHeaders(),
       body: form,
     });
     if (res.status === 401) {
@@ -620,7 +646,7 @@ export const api = {
       const token = getToken();
       const res = await fetch(`${API_BASE}/purchase-bills/upload`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: authHeaders(),
         body: form,
       });
       if (res.status === 401) {
@@ -639,7 +665,7 @@ export const api = {
       const token = getToken();
       const res = await fetch(`${API_BASE}/purchase-bills/${encodeURIComponent(id)}/retry-ocr`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: authHeaders(),
         body: form,
       });
       if (!res.ok) {
@@ -651,7 +677,42 @@ export const api = {
   },
 
   branches: {
-    list: () => request("/stock-transfers/branches"),
+    /** Admin / RBAC branch entity list (with businessName). */
+    list: () => request("/branches"),
+    get: (id) => request(`/branches/${encodeURIComponent(id)}`),
+    create: (body) => request("/branches", { method: "POST", body: JSON.stringify(body) }),
+    update: (id, body) =>
+      request(`/branches/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+    deactivate: (id) => request(`/branches/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    /** Legacy alias used by stock transfer UI */
+    forTransfers: () => request("/stock-transfers/branches"),
+  },
+
+  users: {
+    list: () => request("/users"),
+    create: (body) => request("/users", { method: "POST", body: JSON.stringify(body) }),
+    update: (id, body) =>
+      request(`/users/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+    resetPassword: (id, password) =>
+      request(`/users/${encodeURIComponent(id)}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      }),
+  },
+
+  analytics: {
+    get: (params = {}) => {
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v != null && String(v).trim() !== "") q.set(k, String(v));
+      });
+      const qs = q.toString();
+      return request(`/analytics${qs ? `?${qs}` : ""}`);
+    },
+    auditLogs: (params = {}) => {
+      const q = new URLSearchParams(params);
+      return request(`/analytics/audit-logs?${q}`);
+    },
   },
 
   stockTransfers: {

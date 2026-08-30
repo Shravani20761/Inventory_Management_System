@@ -4,6 +4,7 @@ import { renderInvoiceHtml } from "./invoiceTemplate.js";
 import { renderRecommendationHtml } from "./recommendationTemplate.js";
 import { renderFinalQuotationHtml } from "./finalQuotationTemplate.js";
 import { ensureGeneratedDir, GENERATED_DIR, getQuotationRelativePath } from "./quotationStorageService.js";
+import { enrichDocCompany } from "./branchScopeService.js";
 
 const INVOICE_DIR = path.join(GENERATED_DIR, "invoices");
 
@@ -71,6 +72,7 @@ async function puppeteerPdf(html, filePath, options = {}) {
 
 export async function generateRecommendationPdf(sheet) {
   await ensureGeneratedDir();
+  await enrichDocCompany(sheet);
   const fileName = buildRecommendationFileName(sheet.sheetKey || sheet.id || `REC-${Date.now()}`);
   const filePath = path.join(GENERATED_DIR, fileName);
   const html = await renderRecommendationHtml(sheet);
@@ -89,6 +91,10 @@ export async function generateRecommendationPdf(sheet) {
 
 export async function generateFinalQuotationPdf(quotation) {
   await ensureGeneratedDir();
+  await enrichDocCompany(quotation);
+  if (quotation.company?.name && !quotation.companyName) {
+    quotation.companyName = quotation.company.name;
+  }
   const fileName = buildFinalQuotationFileName(quotation);
   const filePath = path.join(GENERATED_DIR, fileName);
   try {
@@ -132,9 +138,10 @@ export async function generateQuotationPdf(quotation) {
   return generateRecommendationPdf(quotation);
 }
 
-/** Generate invoice PDF with BatteryMela branded template. */
+/** Generate invoice PDF with branch-aware company branding. */
 export async function generateInvoicePdf(invoice) {
   await fs.mkdir(INVOICE_DIR, { recursive: true });
+  await enrichDocCompany(invoice);
   const safeNum = String(invoice.invoiceNumber ?? invoice.id ?? Date.now()).replace(/[^a-zA-Z0-9_-]/g, "");
   const fileName = `invoice-${safeNum}.pdf`;
   const filePath = path.join(INVOICE_DIR, fileName);

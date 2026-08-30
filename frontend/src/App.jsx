@@ -227,6 +227,28 @@ export default function App() {
     };
   }, []);
 
+  /** Admin branch switcher — reload workspace lists when X-Branch-Id changes. */
+  useEffect(() => {
+    const onBranch = () => {
+      hasHydratedFromApi.current = false;
+      (async () => {
+        try {
+          const data = await loadFromApi();
+          hasHydratedFromApi.current = true;
+          if (data.inventory?.length) setInventory(mapInventoryFromServer(data.inventory));
+          if (data.purchases) setPurchases(data.purchases);
+          if (data.sales) setSales(data.sales);
+          if (data.quotations) setQuotations(sortQuotationsNewestFirst(data.quotations));
+          if (data.invoices) setInvoices(data.invoices.map(mapInvoiceRow));
+        } catch (e) {
+          console.warn("Reload after branch change failed:", e.message);
+        }
+      })();
+    };
+    window.addEventListener("branch:changed", onBranch);
+    return () => window.removeEventListener("branch:changed", onBranch);
+  }, []);
+
   /** Re-check API health periodically; clear stale sync errors when the server is back. */
   useEffect(() => {
     const tick = async () => {
@@ -482,10 +504,11 @@ function Dashboard({ inventory, quotations, invoices, setPage, apiOnline, user }
         <div>
           <div className="page-title">Branch Dashboard</div>
           <div className="page-sub">
-            {user?.branchName ? (
+            {user?.businessName || user?.branchName ? (
               <>
-                Logged in as <strong>{user.branchName}</strong>
-                {user?.role === "superAdmin" ? " · Super admin" : ""}
+                <strong>{user.businessName || "BatteryMela"}</strong>
+                {user?.branchName ? ` · ${user.branchName}` : ""}
+                {user?.role === "superAdmin" ? " · Admin (use sidebar branch filter)" : ""}
               </>
             ) : (
               "Your branch overview · stock · transfers"

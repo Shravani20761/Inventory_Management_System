@@ -69,20 +69,58 @@ export async function authenticateUser(email, password) {
     err.status = 401;
     throw err;
   }
+
+  // Branch users may only log into an active assigned branch.
+  if (user.role !== "superAdmin") {
+    if (!user.branchId) {
+      const err = new Error("No branch assigned to this account. Ask Admin to assign a branch.");
+      err.status = 403;
+      throw err;
+    }
+    const branch = await Branch.findById(user.branchId).lean();
+    if (!branch || branch.active === false || branch.status === "inactive") {
+      const err = new Error("This branch is inactive. Contact Admin.");
+      err.status = 403;
+      throw err;
+    }
+  }
+
   const token = signUserToken(user);
-  const populated = await User.findById(user._id).populate("branchId", "name branchName code branchId city").lean();
+  const populated = await User.findById(user._id)
+    .populate("branchId", "name branchName code branchId city businessName phone email gstin address status active")
+    .lean();
   const safe = user.toJSON();
   if (populated?.branchId) {
     const b = populated.branchId;
     safe.branchId = b._id?.toString() ?? safe.branchId;
     safe.branchName = b.branchName || b.name;
     safe.branchCode = b.branchId || b.code;
+    safe.businessName = b.businessName || "BatteryMela";
   }
-  return { token, user: safe };
+  // Never expose password hash
+  delete safe.password;
+  return {
+    token,
+    user: safe,
+    homePath: "/dashboard",
+  };
 }
 
 export async function getUserById(id) {
-  return User.findById(id).populate("branchId", "name code city");
+  const user = await User.findById(id).populate(
+    "branchId",
+    "name code city businessName branchName phone email gstin address status active branchId",
+  );
+  if (!user) return null;
+  const json = user.toJSON();
+  if (user.branchId && typeof user.branchId === "object") {
+    const b = user.branchId;
+    json.branchId = b._id?.toString() || json.branchId;
+    json.branchName = b.branchName || b.name || "";
+    json.branchCode = b.code || b.branchId || "";
+    json.businessName = b.businessName || "BatteryMela";
+  }
+  return json;
 }
 
 /** First-run: create default branch + superAdmin if no users exist */
@@ -105,24 +143,46 @@ export async function bootstrapAdminIfEmpty() {
   if (!branch) {
     branch = await Branch.create({
       branchId: "wakad",
-      branchName: "Wakad Branch",
-      name: "Wakad Branch",
+      branchName: "Wakad",
+      name: "Wakad",
       code: "WAKAD",
+      businessName: "BatteryMela",
       city: "Pune",
       address: "Wakad, Pune",
+      status: "active",
     });
     console.log("[auth] Created default branch:", branch.name);
   }
-  if (!(await Branch.findOne({ branchId: "pimple_saudagar" }))) {
-    await Branch.create({
+  for (const row of [
+    {
+      branchId: "ravet",
+      branchName: "Ravet",
+      name: "Ravet",
+      code: "RAVET",
+      businessName: "BatteryMela",
+      city: "Pune",
+      address: "Ravet, Pune",
+    },
+    {
       branchId: "pimple_saudagar",
-      branchName: "Pimple Saudagar Branch",
-      name: "Pimple Saudagar Branch",
-      code: "PIMPLE",
+      branchName: "Pimple Saudagar",
+      name: "Pimple Saudagar",
+      code: "PIMPLE_SAUDAGAR",
+      businessName: "Krishnaa Battery",
       city: "Pune",
       address: "Pimple Saudagar, Pune",
+    },
+  ]) {
+    const existing = await Branch.findOne({
+      $or: [{ branchId: row.branchId }, { code: row.code }, { code: "PIMPLE" }],
     });
-    console.log("[auth] Created Pimple Saudagar branch");
+    if (!existing) {
+      await Branch.create({ ...row, active: true, status: "active" });
+      console.log("[auth] Created branch:", row.name);
+    } else {
+      Object.assign(existing, row, { active: true, status: "active" });
+      await existing.save();
+    }
   }
 
   const user = await registerUser({

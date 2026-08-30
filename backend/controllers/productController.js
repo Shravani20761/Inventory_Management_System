@@ -8,12 +8,11 @@ import {
   countProductsInBranch,
   resolveTenantBranchId,
 } from "../services/inventoryService.js";
+import { tenantFromReq, writeBranchIdFromReq } from "../utils/tenant.js";
+import { recordAudit } from "../services/auditService.js";
 
 function tenant(req) {
-  return {
-    branchId: req.user?.branchId || null,
-    isSuperAdmin: req.user?.role === "superAdmin",
-  };
+  return tenantFromReq(req);
 }
 
 export async function listProductsController(req, res, next) {
@@ -64,11 +63,12 @@ export async function deleteProductController(req, res, next) {
 
 export async function bulkProductsController(req, res, next) {
   try {
-    const { branchId } = await resolveTenantBranchId(req);
+    let { branchId } = await resolveTenantBranchId(req);
+    branchId = writeBranchIdFromReq(req, branchId || req.body?.branchId) || branchId;
     if (!branchId) {
       return res.status(400).json({
         error:
-          "No branch for this account. Assign branchId on the user or ensure a default Branch exists.",
+          "Select a target branch (Admin) or assign a branch to this user before importing inventory.",
       });
     }
     const items = req.body.items ?? [];
@@ -76,7 +76,15 @@ export async function bulkProductsController(req, res, next) {
     const inventory = await mergeProducts(items, { branchId });
     const after = await countProductsInBranch(branchId);
     console.log("[products/bulk] items:", items.length, "Product count (branch):", before, "→", after);
-    res.json({ count: items.length, inventory, productCount: after, productCountBefore: before });
+    await recordAudit({
+      userId: req.user?.sub,
+      role: req.user?.role,
+      branchId,
+      action: "inventory.bulk_import",
+      entity: "Product",
+      metadata: { count: items.length },
+    });
+    res.json({ count: items.length, inventory, productCount: after, productCountBefore: before, branchId });
   } catch (err) {
     next(err);
   }

@@ -1,17 +1,17 @@
 import Invoice from "../models/Invoice.js";
 import { generateInvoice, listInvoices, prepareInvoiceFromQuotation } from "../services/invoiceService.js";
 import mongoose from "mongoose";
+import { tenantFromReq } from "../utils/tenant.js";
+import { recordAudit } from "../services/auditService.js";
 
 function tenant(req) {
-  return {
-    branchId: req.user?.branchId || null,
-    isSuperAdmin: req.user?.role === "superAdmin",
-  };
+  return tenantFromReq(req);
 }
 
 function branchFilter(req) {
-  const { branchId, isSuperAdmin } = tenant(req);
-  if (isSuperAdmin || !branchId) return {};
+  const { branchId, isSuperAdmin, allBranches } = tenant(req);
+  if (isSuperAdmin && (allBranches || !branchId)) return {};
+  if (!branchId) return { branchId: { $exists: false } };
   return { branchId: new mongoose.Types.ObjectId(branchId) };
 }
 
@@ -38,7 +38,21 @@ export async function getInvoiceController(req, res, next) {
 
 export async function generateInvoiceController(req, res, next) {
   try {
-    res.status(201).json(await generateInvoice(req.body, tenant(req)));
+    const t = tenant(req);
+    // Never allow non-HQ to set another branch via body
+    if (!t.isSuperAdmin && req.body?.branchId && String(req.body.branchId) !== String(t.branchId)) {
+      return res.status(403).json({ error: "Forbidden: cannot create invoice for another branch" });
+    }
+    const result = await generateInvoice(req.body, t);
+    await recordAudit({
+      userId: req.user?.sub,
+      role: req.user?.role,
+      branchId: t.branchId,
+      action: "invoice.create",
+      entity: "Invoice",
+      entityId: result?.id || result?.invoiceNumber || "",
+    });
+    res.status(201).json(result);
   } catch (err) {
     next(err);
   }

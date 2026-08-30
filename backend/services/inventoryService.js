@@ -196,24 +196,52 @@ export async function countProductsInBranch(branchId) {
 }
 
 export async function resolveTenantBranchId(req) {
+  // Prefer branch scope middleware when present (RBAC-safe).
+  if (req.branchScope) {
+    const scope = req.branchScope;
+    return {
+      branchId: scope.mode === "one" ? scope.branchId : scope.branchId,
+      isSuperAdmin: scope.isHq || scope.isSuperAdmin,
+      /** When HQ + all branches, callers should not default to first branch for reads. */
+      allBranches: scope.mode === "all",
+      branchScope: scope,
+    };
+  }
+
   let branchId = req.user?.branchId || null;
   if (branchId && typeof branchId === "object") {
     branchId = branchId._id?.toString?.() ?? branchId.toString?.() ?? null;
   }
   const isSuperAdmin = req.user?.role === "superAdmin";
-  if (!branchId && isSuperAdmin) {
-    const b = await Branch.findOne().sort({ createdAt: 1 });
-    branchId = b?._id.toString() ?? null;
+
+  // HQ may act as a branch via header/query — never for non-HQ.
+  if (isSuperAdmin) {
+    const raw = req.headers["x-branch-id"] || req.query?.branchId || null;
+    if (raw && String(raw) !== "all") {
+      const s = String(raw).trim();
+      if (mongoose.Types.ObjectId.isValid(s)) {
+        return { branchId: s, isSuperAdmin: true, allBranches: false };
+      }
+    }
+    if (raw === "all" || !raw) {
+      return { branchId: null, isSuperAdmin: true, allBranches: true };
+    }
   }
-  return { branchId, isSuperAdmin };
+
+  if (!branchId && isSuperAdmin) {
+    // Prefer explicit all-branches for HQ reads; keep first-branch only for writers that need an id.
+    return { branchId: null, isSuperAdmin: true, allBranches: true };
+  }
+  return { branchId, isSuperAdmin, allBranches: false };
 }
 
-export async function listProducts({ includeProfit = true, branchId = null, isSuperAdmin = false } = {}) {
+export async function listProducts({ includeProfit = true, branchId = null, isSuperAdmin = false, allBranches = false } = {}) {
+  const hqAll = Boolean(isSuperAdmin && (allBranches || !branchId));
   return listAllCategoriesAsLegacyProducts({
     includeProfit,
-    branchId,
-    isSuperAdmin,
-    strictBranch: Boolean(branchId) && !isSuperAdmin,
+    branchId: hqAll ? null : branchId,
+    isSuperAdmin: hqAll || (isSuperAdmin && !branchId),
+    strictBranch: Boolean(branchId) && !hqAll,
   });
 }
 

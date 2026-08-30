@@ -13,6 +13,8 @@ import {
 import { applyAutomotiveUploadBrand } from "../shared/constants/inventoryCategories.js";
 import InvBatteryCombo from "../models/inventory/InvBatteryCombo.js";
 import { uploadInventoryProductImage } from "../services/cloudinaryService.js";
+import { tenantFromReq, writeBranchIdFromReq } from "../utils/tenant.js";
+import { recordAudit } from "../services/auditService.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -34,7 +36,7 @@ function parseUploadMapping(req) {
 }
 
 function tenant(req) {
-  return { branchId: req.user?.branchId || null, isSuperAdmin: req.user?.role === "superAdmin" };
+  return tenantFromReq(req);
 }
 
 function mountCategory(importTypeLabel, categoryKey) {
@@ -91,11 +93,12 @@ function mountCategory(importTypeLabel, categoryKey) {
   r.post("/upload", upload.single("file"), async (req, res, next) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-      const { branchId, isSuperAdmin } = await resolveTenantBranchId(req);
+      let { branchId, isSuperAdmin } = await resolveTenantBranchId(req);
+      branchId = writeBranchIdFromReq(req, branchId || req.body?.branchId) || branchId;
       if (!branchId) {
         return res.status(400).json({
           error:
-            "No branch for this account. Assign branchId on the user or ensure a default Branch exists.",
+            "Select a target branch (Admin) or assign a branch to this user before importing inventory.",
         });
       }
       const { columnMappingByIndex, duplicateSelections } = parseUploadMapping(req);

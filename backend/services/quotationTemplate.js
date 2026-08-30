@@ -319,10 +319,11 @@ function comboBrandedHeader(quotation, logoUrl, today) {
 /** Customer + company blocks like the reference quotation. */
 function comboCustomerCompanyRow(quotation) {
   const addr = quotation.customerAddress || quotation.requirements?.customerAddress || "";
-  const companyName = quotation.companyName || "BatteryMela";
+  const company = quotation.company || {};
+  const companyName = quotation.companyName || company.name || "BatteryMela";
   const companyAddr =
-    quotation.companyAddress || "Datta Mandir Road, Opposite of Datta Mandir, Wakad.";
-  const companyPhone = quotation.companyPhone || "7798234598";
+    quotation.companyAddress || company.address || "Datta Mandir Road, Opposite of Datta Mandir, Wakad.";
+  const companyPhone = quotation.companyPhone || company.phone || "7798234598";
   return `<section class="combo-party-grid">
     <div class="party-box">
       <h3 class="party-title">Customer Details</h3>

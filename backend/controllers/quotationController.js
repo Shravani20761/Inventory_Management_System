@@ -10,17 +10,16 @@ import {
 } from "../services/salesDocumentService.js";
 import mongoose from "mongoose";
 
+import { tenantFromReq } from "../utils/tenant.js";
+
 function tenant(req) {
-  return {
-    branchId: req.user?.branchId || null,
-    isSuperAdmin: req.user?.role === "superAdmin",
-    userName: req.user?.email || req.user?.name || "",
-  };
+  return tenantFromReq(req);
 }
 
 function branchFilter(req) {
-  const { branchId, isSuperAdmin } = tenant(req);
-  if (isSuperAdmin || !branchId) return {};
+  const { branchId, isSuperAdmin, allBranches } = tenant(req);
+  if (isSuperAdmin && (allBranches || !branchId)) return {};
+  if (!branchId) return { branchId: { $exists: false } };
   return { branchId: new mongoose.Types.ObjectId(branchId) };
 }
 

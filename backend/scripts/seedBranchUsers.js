@@ -1,6 +1,6 @@
 /**
- * Create Wakad + Pimple Saudagar branch users and optional demo stock.
- * Run: npm run seed:branch-users
+ * Create branch managers for Wakad / Ravet / Pimple Saudagar.
+ * Run: npm run seed:branch-users --prefix backend
  */
 import "dotenv/config";
 import bcrypt from "bcryptjs";
@@ -9,51 +9,73 @@ import Branch from "../models/Branch.js";
 import User from "../models/User.js";
 import { DEFAULT_PERMISSIONS } from "../constants/roles.js";
 
+const BRANCH_DEFS = [
+  {
+    branchId: "wakad",
+    branchName: "Wakad",
+    name: "Wakad",
+    code: "WAKAD",
+    businessName: "BatteryMela",
+    address: "Datta Mandir Road, Wakad",
+    city: "Pune",
+  },
+  {
+    branchId: "ravet",
+    branchName: "Ravet",
+    name: "Ravet",
+    code: "RAVET",
+    businessName: "BatteryMela",
+    address: "Ravet, Pune",
+    city: "Pune",
+  },
+  {
+    branchId: "pimple_saudagar",
+    branchName: "Pimple Saudagar",
+    name: "Pimple Saudagar",
+    code: "PIMPLE_SAUDAGAR",
+    businessName: "Krishnaa Battery",
+    address: "Pimple Saudagar, Pune",
+    city: "Pune",
+  },
+];
+
 const BRANCH_USERS = [
   {
     branchId: "wakad",
-    name: "Wakad Branch Manager",
+    name: "Wakad Manager",
     email: "wakad@batterymela.com",
     password: "Wakad@123",
-    role: "admin",
+    role: "manager",
+  },
+  {
+    branchId: "ravet",
+    name: "Ravet Manager",
+    email: "ravet@batterymela.com",
+    password: "Ravet@123",
+    role: "manager",
   },
   {
     branchId: "pimple_saudagar",
     name: "Pimple Saudagar Manager",
     email: "pimple@batterymela.com",
     password: "Pimple@123",
-    role: "admin",
+    role: "manager",
   },
 ];
 
 await connectMongo();
 
-for (const row of [
-  {
-    branchId: "wakad",
-    branchName: "Wakad Branch",
-    name: "Wakad Branch",
-    code: "WAKAD",
-    address: "Wakad, Pune",
-    city: "Pune",
-  },
-  {
-    branchId: "pimple_saudagar",
-    branchName: "Pimple Saudagar Branch",
-    name: "Pimple Saudagar Branch",
-    code: "PIMPLE",
-    address: "Pimple Saudagar, Pune",
-    city: "Pune",
-  },
-]) {
-  let branch = await Branch.findOne({ branchId: row.branchId });
+for (const row of BRANCH_DEFS) {
+  let branch = await Branch.findOne({
+    $or: [{ branchId: row.branchId }, { code: row.code }, { code: "PIMPLE" }],
+  });
   if (!branch) {
-    branch = await Branch.create({ ...row, active: true });
-    console.log("Created branch:", row.branchName);
+    branch = await Branch.create({ ...row, active: true, status: "active" });
+    console.log("Created branch:", row.name);
   } else {
-    Object.assign(branch, row);
+    Object.assign(branch, { ...row, active: true, status: "active" });
     await branch.save();
-    console.log("Updated branch:", row.branchName);
+    console.log("Updated branch:", row.name);
   }
 }
 
@@ -73,7 +95,7 @@ for (const u of BRANCH_USERS) {
     existing.permissions = DEFAULT_PERMISSIONS[u.role] || [];
     existing.active = true;
     await existing.save();
-    console.log("Updated user:", u.email, "→", branch.branchName || branch.name);
+    console.log("Updated user:", u.email, "→", branch.businessName, "/", branch.name);
   } else {
     await User.create({
       name: u.name,
@@ -84,13 +106,13 @@ for (const u of BRANCH_USERS) {
       permissions: DEFAULT_PERMISSIONS[u.role] || [],
       active: true,
     });
-    console.log("Created user:", u.email, "→", branch.branchName || branch.name);
+    console.log("Created user:", u.email, "→", branch.businessName, "/", branch.name);
   }
 }
 
-console.log("\n--- Branch login credentials ---");
+console.log("\n--- Manager logins ---");
 for (const u of BRANCH_USERS) {
   console.log(`${u.email} / ${u.password} (${u.branchId})`);
 }
-console.log("\nSuper admin (all branches): shravanijadhav921@gmail.com / password@123");
+console.log("\nHQ Admin: use BOOTSTRAP / existing superAdmin account");
 process.exit(0);

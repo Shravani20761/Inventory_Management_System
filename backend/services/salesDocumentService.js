@@ -842,12 +842,16 @@ export async function sendFinalQuotationWhatsApp(id, tenant = {}, meta = {}) {
   }
 
   const pdfPath = s?.quotationPdfUrl || s?.quotation_pdf_url || existing.finalQuotationPdfUrl || existing.quotationPdfUrl || "";
+  const { companyFromBranch, getBranchLean } = await import("./branchScopeService.js");
+  const branch = await getBranchLean(existing.branchId || tenant.branchId);
+  const company = companyFromBranch(branch);
   const result = await sendQuotationWhatsApp({
     to: existing.customerPhone,
     customerName: existing.customerName,
     publicUrl,
     fileName: String(pdfPath).split("/").pop() || "quotation.pdf",
     optionCount: 1,
+    companyName: company.name,
   });
 
   const sent = Boolean(result.sent);

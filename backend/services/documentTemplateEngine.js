@@ -117,11 +117,12 @@ export function badgeStyle(badge) {
   return `background:${b.bg};color:${b.text}`;
 }
 
-export async function logoBlock() {
+export async function logoBlock(companyName = "BatteryMela") {
   const logo = await getLogoDataUri();
+  const name = companyName || "BatteryMela";
   return logo
-    ? `<img class="company-logo" src="${escAttr(logo)}" alt="BatteryMela"/>`
-    : `<div class="logo-fallback">BatteryMela</div>`;
+    ? `<img class="company-logo" src="${escAttr(logo)}" alt="${escAttr(name)}"/>`
+    : `<div class="logo-fallback">${esc(name)}</div>`;
 }
 
 export async function productImageHtml(option, product = "inverter", alt = "", sizeClass = "product-image") {
@@ -161,7 +162,10 @@ export async function productCellHtml(option, product = "inverter") {
 }
 
 export function partyBoxes(doc) {
-  const co = BATTERYMELA_COMPANY;
+  const co = { ...BATTERYMELA_COMPANY, ...(doc.company || {}) };
+  if (doc.companyName) co.name = doc.companyName;
+  if (doc.companyAddress) co.address = doc.companyAddress;
+  if (doc.companyPhone) co.phone = doc.companyPhone;
   const addr = doc.customerAddress || doc.requirements?.customerAddress || "";
   return `<section class="party-grid">
     <div class="party-box">

@@ -4,11 +4,17 @@ import mongoose from "mongoose";
 
 export { buildRequirementsFromPayload } from "../utils/quotationPayloadUtils.js";
 
-export async function listQuotations({ branchId = null, isSuperAdmin = false } = {}) {
+export async function listQuotations({ branchId = null, isSuperAdmin = false, allBranches = false } = {}) {
   const q = { documentStage: { $in: ["final", "converted", "legacy", null] } };
-  if (!isSuperAdmin && branchId) {
+  if (isSuperAdmin && (allBranches || !branchId)) {
+    // HQ all-branches: no filter
+  } else if (branchId) {
     const bid = new mongoose.Types.ObjectId(branchId);
-    q.$or = [{ branchId: bid }, { branchId: null }, { branchId: { $exists: false } }];
+    if (isSuperAdmin) {
+      q.branchId = bid;
+    } else {
+      q.$or = [{ branchId: bid }, { branchId: null }, { branchId: { $exists: false } }];
+    }
   }
   const docs = await Quotation.find(q).sort({ createdAt: -1 }).lean();
 
