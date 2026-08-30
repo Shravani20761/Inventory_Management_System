@@ -31,13 +31,28 @@ export default function UsersAdmin() {
   const [newPassword, setNewPassword] = useState("");
 
   async function refresh() {
-    const [u, b] = await Promise.all([api.users.list(), api.branches.list()]);
-    setUsers(u);
-    setBranches(b);
+    setError("");
+    // Load independently so a branches failure cannot wipe a successful users load (and vice versa).
+    const [usersResult, branchesResult] = await Promise.allSettled([api.users.list(), api.branches.list()]);
+
+    if (usersResult.status === "fulfilled") {
+      setUsers(Array.isArray(usersResult.value) ? usersResult.value : []);
+    } else {
+      setUsers([]);
+      setError(`GET /api/users failed: ${usersResult.reason?.message || "Unknown error"}`);
+    }
+
+    if (branchesResult.status === "fulfilled") {
+      setBranches(Array.isArray(branchesResult.value) ? branchesResult.value : []);
+    } else {
+      setBranches([]);
+      const branchMsg = `GET /api/branches failed: ${branchesResult.reason?.message || "Unknown error"}`;
+      setError((prev) => (prev ? `${prev} | ${branchMsg}` : branchMsg));
+    }
   }
 
   useEffect(() => {
-    refresh().catch((e) => setError(e.message));
+    refresh();
   }, []);
 
   async function onCreate(e) {

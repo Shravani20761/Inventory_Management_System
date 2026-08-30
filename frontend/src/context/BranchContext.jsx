@@ -27,7 +27,22 @@ export function BranchProvider({ children }) {
     api.branches
       .list()
       .then((rows) => {
-        if (!cancelled) setBranches(Array.isArray(rows) ? rows : []);
+        if (cancelled) return;
+        const list = Array.isArray(rows) ? rows : [];
+        setBranches(list);
+        // Drop stale Admin act-as id that is not in the live branch list (causes API 404s).
+        if (isHq && selectedBranchId && selectedBranchId !== "all") {
+          const ok = list.some((b) => String(b.id || b._id) === String(selectedBranchId));
+          if (!ok) {
+            setSelectedBranchIdState("all");
+            try {
+              localStorage.setItem(BRANCH_KEY, "all");
+            } catch {
+              /* ignore */
+            }
+            window.dispatchEvent(new CustomEvent("branch:changed", { detail: { branchId: "all" } }));
+          }
+        }
       })
       .catch(() => {
         if (!cancelled) setBranches([]);
@@ -35,7 +50,7 @@ export function BranchProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.role, user?.branchId]);
+  }, [user?.id, user?.role, user?.branchId, isHq, selectedBranchId]);
 
   const setSelectedBranchId = useCallback(
     (id) => {

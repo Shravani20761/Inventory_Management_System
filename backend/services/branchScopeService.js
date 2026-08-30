@@ -84,9 +84,18 @@ export async function resolveBranchScope(req) {
   }
   const exists = await Branch.findById(bid).select("_id").lean();
   if (!exists) {
-    const err = new Error("Branch not found");
-    err.status = 404;
-    throw err;
+    // Stale Admin act-as (deleted/renamed branch in localStorage) must not 404 every API.
+    // Fall back to all-branches scope so Users / Branches / analytics keep working.
+    console.warn("[branchScope] Unknown X-Branch-Id for HQ — falling back to all:", requested);
+    return {
+      isHq: true,
+      mode: "all",
+      branchId: null,
+      branchObjectId: null,
+      branchIds: [],
+      isSuperAdmin,
+      staleActAs: String(requested),
+    };
   }
   return {
     isHq: true,
