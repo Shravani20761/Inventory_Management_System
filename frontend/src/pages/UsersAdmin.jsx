@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api/client.js";
+import { api, getApiBase, isLocalApiTarget } from "../api/client.js";
 import { displayRole } from "../utils/authRouting.js";
 
 const ROLES = [
@@ -125,7 +125,14 @@ export default function UsersAdmin() {
       <h1 className="text-2xl font-bold text-slate-900">Users</h1>
       <p className="mt-1 text-slate-600">
         Assign managers and staff to branches. Passwords are hashed — Admin can only reset, never view stored passwords.
+        Users created here authenticate against <code className="text-xs">{getApiBase()}</code> from any device.
       </p>
+      {isLocalApiTarget() ? (
+        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          You are managing users on the <strong>local</strong> API. Accounts created here will not work on the production
+          website for staff on other devices. Open the production Admin site to create logins that work everywhere.
+        </div>
+      ) : null}
       {error && <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {success && <div className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{success}</div>}
 

@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import User from "../models/User.js";
-import { registerUser } from "../services/authService.js";
+import { normalizeEmail, registerUser } from "../services/authService.js";
 import { DEFAULT_PERMISSIONS, isHqRole, ROLES } from "../constants/roles.js";
 import { recordAudit } from "../services/auditService.js";
 
@@ -84,7 +84,7 @@ export async function updateUserController(req, res, next) {
 
     const { name, email, password, role, branchId, permissions, active } = req.body;
     if (name != null) user.name = name;
-    if (email != null) user.email = String(email).toLowerCase();
+    if (email != null) user.email = normalizeEmail(email);
     if (role != null) {
       if (!ROLES.includes(role)) return res.status(400).json({ error: "Invalid role" });
       if (role === "superAdmin" && req.user.role !== "superAdmin") {

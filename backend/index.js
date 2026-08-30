@@ -27,7 +27,7 @@ console.log(`[startup] NODE_ENV=${process.env.NODE_ENV || "undefined"} PORT=${pr
 console.log(`[startup] MONGODB_URI is ${process.env.MONGODB_URI ? "set" : "MISSING"}`);
 console.log(`[startup] PUBLIC_BASE_URL=${process.env.PUBLIC_BASE_URL || "(not set)"}`);
 console.log(`[startup] FRONTEND_ORIGIN=${process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN || "(allow all — set me for production SPA)"}`);
-import { connectMongo, isMongoConnected } from "./config/mongodb.js";
+import { connectMongo, isMongoConnected, getMongoDbName } from "./config/mongodb.js";
 import "./config/registerCatalogModels.js";
 import { bootstrapAdminIfEmpty } from "./services/authService.js";
 import { requireAuth, requireRoles } from "./middleware/authMiddleware.js";
@@ -137,17 +137,20 @@ app.get("/api/webhooks/whatsapp", (req, res) => {
 
 app.get("/api/health", (req, res) => {
   const dbOk = isMongoConnected();
+  // Expose DB *name* only (never URI/credentials) so Admin can verify create vs login hit the same DB.
+  const mongoDbName = getMongoDbName();
   const payload = {
     ok: true,
     status: "up",
     database: dbOk ? "mongodb" : "disconnected",
+    mongoDbName,
     whatsapp: getWhatsAppConfigStatus(),
     cloudinary: getCloudinaryConfigStatus(),
     publicBaseUrl: process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`,
     timestamp: new Date().toISOString(),
   };
   console.log(
-    `[health] GET /api/health → ok=${payload.ok} database=${payload.database} from=${req.ip || req.socket?.remoteAddress || "unknown"}`,
+    `[health] GET /api/health → ok=${payload.ok} database=${payload.database} dbName=${mongoDbName || "?"} from=${req.ip || req.socket?.remoteAddress || "unknown"}`,
   );
   res.json(payload);
 });

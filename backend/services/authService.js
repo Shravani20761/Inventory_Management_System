@@ -35,19 +35,38 @@ export function verifyUserToken(token) {
   return jwt.verify(token, jwtSecret());
 }
 
+/** Normalize login/register email: trim + lowercase. Never log secrets. */
+export function normalizeEmail(email) {
+  return String(email ?? "")
+    .trim()
+    .toLowerCase();
+}
+
 export async function registerUser({ name, email, password, role, branchId, permissions }) {
-  const existing = await User.findOne({ email: email.toLowerCase() });
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    const err = new Error("Email is required");
+    err.status = 400;
+    throw err;
+  }
+  const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
     const err = new Error("Email already registered");
     err.status = 409;
     throw err;
   }
-  const hash = await bcrypt.hash(password, SALT_ROUNDS);
+  const plain = String(password ?? "");
+  if (plain.length < 6) {
+    const err = new Error("Password must be at least 6 characters");
+    err.status = 400;
+    throw err;
+  }
+  const hash = await bcrypt.hash(plain, SALT_ROUNDS);
   const perms = permissions?.length ? permissions : DEFAULT_PERMISSIONS[role] || [];
   const bid = branchId ? (typeof branchId === "string" ? new mongoose.Types.ObjectId(branchId) : branchId) : null;
   const doc = await User.create({
     name,
-    email: email.toLowerCase(),
+    email: normalizedEmail,
     password: hash,
     role,
     permissions: perms,
@@ -57,13 +76,36 @@ export async function registerUser({ name, email, password, role, branchId, perm
 }
 
 export async function authenticateUser(email, password) {
-  const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
+  const normalizedEmail = normalizeEmail(email);
+  const plainPassword = String(password ?? "");
+  const debug = process.env.AUTH_DEBUG === "1" || process.env.AUTH_DEBUG === "true";
+
+  const user = await User.findOne({ email: normalizedEmail }).select("+password");
+  const found = Boolean(user);
+  const active = Boolean(user?.active);
+
+  if (debug) {
+    console.info(
+      `[auth.login] emailNormalized=${normalizedEmail} userFound=${found} userActive=${active}`,
+    );
+  }
+
   if (!user || !user.active) {
+    if (debug) {
+      console.info(`[auth.login] result=fail reason=${!user ? "not_found" : "inactive"}`);
+    }
     const err = new Error("Invalid email or password");
     err.status = 401;
     throw err;
   }
-  const ok = await bcrypt.compare(password, user.password);
+
+  // Compare against stored bcrypt hash once — never re-hash the login password for storage.
+  const ok = await bcrypt.compare(plainPassword, user.password);
+  if (debug) {
+    console.info(
+      `[auth.login] passwordMatch=${ok} role=${user.role} branchId=${user.branchId?.toString() || "null"}`,
+    );
+  }
   if (!ok) {
     const err = new Error("Invalid email or password");
     err.status = 401;
@@ -99,6 +141,11 @@ export async function authenticateUser(email, password) {
   }
   // Never expose password hash
   delete safe.password;
+  if (debug) {
+    console.info(
+      `[auth.login] result=success role=${safe.role} branchId=${safe.branchId || "null"} business=${safe.businessName || ""}`,
+    );
+  }
   return {
     token,
     user: safe,

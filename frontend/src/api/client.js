@@ -12,6 +12,17 @@ function resolveApiBase() {
 }
 
 const API_BASE = resolveApiBase();
+
+/** Public for UI banners — which API this build talks to (device-independent auth requires production API). */
+export function getApiBase() {
+  return API_BASE;
+}
+
+export function isLocalApiTarget() {
+  const b = String(API_BASE).toLowerCase();
+  return b.includes("localhost") || b.includes("127.0.0.1");
+}
+
 const TOKEN_KEY = "batterypro_token";
 const USER_KEY = "batterypro_user";
 
@@ -116,7 +127,8 @@ async function request(path, options = {}) {
     throw wrapped;
   }
 
-  if (res.status === 401) {
+  // Failed login returns 401 — do not wipe an existing session mid-request for /auth/login.
+  if (res.status === 401 && path !== "/auth/login") {
     clearSession();
     window.dispatchEvent(new CustomEvent("auth:logout"));
   }
@@ -147,7 +159,13 @@ export const api = {
   health: () => request("/health"),
 
   login: (email, password) =>
-    request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    request("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        email: String(email ?? "").trim(),
+        password: String(password ?? ""),
+      }),
+    }),
 
   profile: () => request("/auth/profile"),
 

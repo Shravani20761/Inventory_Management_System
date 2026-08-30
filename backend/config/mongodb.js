@@ -8,6 +8,12 @@ export function isMongoConnected() {
   return connected && mongoose.connection.readyState === 1;
 }
 
+/** Safe diagnostic: database name only (never URI or credentials). */
+export function getMongoDbName() {
+  if (!isMongoConnected()) return null;
+  return mongoose.connection?.name || null;
+}
+
 function bindConnectionListeners() {
   if (listenersBound) return;
   listenersBound = true;

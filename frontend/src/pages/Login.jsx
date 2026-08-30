@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api/client.js";
+import { api, getApiBase, isLocalApiTarget } from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { homePathForUser, displayRole } from "../utils/authRouting.js";
+import { homePathForUser } from "../utils/authRouting.js";
 import { css } from "../appStyles.js";
 
 export default function Login() {
@@ -12,6 +12,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const apiBase = getApiBase();
+  const localApi = isLocalApiTarget();
 
   const submit = async (e) => {
     e.preventDefault();
@@ -59,7 +61,31 @@ export default function Login() {
             }}
           >
             One login for Admin and all branches. Branch is taken from your assigned account — there is no branch picker here.
+            Accounts work from any device or browser when credentials match the production database.
           </div>
+          {localApi ? (
+            <div
+              role="status"
+              style={{
+                fontSize: 13,
+                color: "#92400e",
+                marginBottom: 12,
+                padding: 10,
+                borderRadius: 8,
+                background: "#fffbeb",
+                border: "1px solid #fcd34d",
+                lineHeight: 1.5,
+              }}
+            >
+              This browser is talking to a <strong>local</strong> API ({apiBase}). Users created here are{" "}
+              <strong>not</strong> in production — staff on other devices must use the production website, and you must
+              create their accounts there (or they will see “Invalid email or password”).
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 12 }}>
+              API: {apiBase}
+            </div>
+          )}
           {error && <div style={{ color: "#b91c1c", fontSize: 16, marginBottom: 12 }}>{error}</div>}
           <form onSubmit={submit} className="form-grid">
             <div>

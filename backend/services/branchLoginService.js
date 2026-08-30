@@ -5,6 +5,11 @@ import { DEFAULT_PERMISSIONS, isHqRole } from "../constants/roles.js";
 /**
  * Create or update the branch login (manager/staff) tied to a branch.
  * Used when Admin creates/edits a branch with login credentials.
+ *
+ * Rules:
+ * - Lookup by normalized email first.
+ * - Never silently overwrite a different branch's manager when the email is new.
+ * - Password is bcrypt-hashed exactly once on create/update.
  */
 export async function upsertBranchLogin({
   branchId,
@@ -32,47 +37,9 @@ export async function upsertBranchLogin({
   }
 
   let user = await User.findOne({ email: normalizedEmail }).select("+password");
-  if (user && user.branchId && String(user.branchId) !== String(branchId) && user.role !== loginRole) {
-    // Email already used for another branch / HQ
-    if (String(user.branchId) !== String(branchId)) {
-      const err = new Error("This email is already used by another account");
-      err.status = 409;
-      throw err;
-    }
-  }
 
-  // Prefer existing manager for this branch if email not yet set uniquely
-  if (!user) {
-    user = await User.findOne({ branchId, role: { $in: ["manager", "admin"] } }).select("+password");
-    if (user && user.email !== normalizedEmail) {
-      const clash = await User.findOne({ email: normalizedEmail });
-      if (clash && String(clash._id) !== String(user._id)) {
-        const err = new Error("This email is already registered");
-        err.status = 409;
-        throw err;
-      }
-      user.email = normalizedEmail;
-    }
-  }
-
-  if (!user) {
-    if (!password || String(password).length < 6) {
-      const err = new Error("Password must be at least 6 characters");
-      err.status = 400;
-      throw err;
-    }
-    const hash = await bcrypt.hash(String(password), 10);
-    user = await User.create({
-      name: name || "Branch Manager",
-      email: normalizedEmail,
-      password: hash,
-      role: loginRole,
-      permissions: DEFAULT_PERMISSIONS[loginRole] || DEFAULT_PERMISSIONS.manager,
-      branchId,
-      active: true,
-    });
-  } else {
-    if (String(user.branchId) !== String(branchId) && user.role === "superAdmin") {
+  if (user) {
+    if (isHqRole(user.role)) {
       const err = new Error("Cannot convert Admin account into a branch login");
       err.status = 400;
       throw err;
@@ -92,6 +59,23 @@ export async function upsertBranchLogin({
       user.password = await bcrypt.hash(String(password), 10);
     }
     await user.save();
+  } else {
+    // New email — create a new user. Do NOT reuse/overwrite another manager on this branch.
+    if (!password || String(password).length < 6) {
+      const err = new Error("Password must be at least 6 characters");
+      err.status = 400;
+      throw err;
+    }
+    const hash = await bcrypt.hash(String(password), 10);
+    user = await User.create({
+      name: name || "Branch Manager",
+      email: normalizedEmail,
+      password: hash,
+      role: loginRole,
+      permissions: DEFAULT_PERMISSIONS[loginRole] || DEFAULT_PERMISSIONS.manager,
+      branchId,
+      active: true,
+    });
   }
 
   return {
