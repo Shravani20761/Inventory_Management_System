@@ -8,8 +8,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': { target: 'http://localhost:3001', changeOrigin: true },
-      '/generated': { target: 'http://localhost:3001', changeOrigin: true },
+      '/api': { target: 'http://localhost:3001', changeOrigin: true, timeout: 120_000 },
+      '/generated': { target: 'http://localhost:3001', changeOrigin: true, timeout: 120_000 },
     },
   },
 })

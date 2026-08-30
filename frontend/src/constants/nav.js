@@ -7,6 +7,7 @@ export const NAV_ITEMS = [
   { id: "quotations", label: "Quotations", path: "/shop/quotations", roles: ["superAdmin", "admin", "employee"] },
   { id: "invoices", label: "Tax Invoices", path: "/shop/invoices", roles: ["superAdmin", "admin", "accountant"] },
   { id: "accounts", label: "Accounts & CA Reports", path: "/shop/accounts", roles: ["superAdmin", "admin", "accountant", "ca"] },
+  { id: "vehicle-fitments", label: "Vehicle Compatibility", path: "/shop/vehicle-fitments", roles: ["superAdmin", "admin"] },
 ];
 
 export function navForRole(role) {

@@ -100,8 +100,12 @@ export function normalizeInverterImportRow(row) {
     if (!isEmptyish(v)) out.cd = v;
   }
   if (isEmptyish(out.mrp)) {
-    const v = row.mrp ?? row.mrpFinal ?? row.price ?? row.sellRate;
+    const v = row.mrp ?? row.mrpFinal;
     if (!isEmptyish(v)) out.mrp = v;
+  }
+  if (isEmptyish(out.sellRate)) {
+    const v = row.sellRate ?? row.sellingRate ?? row.price ?? row.newRateWithOB;
+    if (!isEmptyish(v)) out.sellRate = v;
   }
   if (isEmptyish(out.quantity)) {
     const q = row.quantity ?? row.qty;

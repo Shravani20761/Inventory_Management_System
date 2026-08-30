@@ -33,6 +33,9 @@ const homeInvBatterySchema = new mongoose.Schema(
     batteryBossPrice: { type: Number, default: 0 },
     supplier: { type: String, default: "" },
     invoiceNo: { type: String, default: "" },
+    batteryImage: { type: String, default: "" },
+    inverterImage: { type: String, default: "" },
+    brandLogo: { type: String, default: "" },
   },
   { timestamps: true, collection: "home_inverter_batteries" },
 );

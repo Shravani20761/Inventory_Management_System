@@ -52,6 +52,7 @@ import usersRoutes from "./routes/users.js";
 import branchesRoutes from "./routes/branches.js";
 import stockTransfersRoutes from "./routes/stockTransfers.js";
 import purchaseManagementRoutes from "./routes/purchaseManagement.js";
+import purchaseBillsRoutes from "./routes/purchaseBills.js";
 import vehiclesRoutes from "./routes/vehicles.js";
 
 import { recommendComboController } from "./controllers/comboController.js";
@@ -79,15 +80,24 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN |
   .map((s) => s.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
+/** Also allow 127.0.0.1 when localhost is listed (Windows dev). */
+const corsOrigins = [...allowedOrigins];
+for (const o of allowedOrigins) {
+  if (o.includes("localhost")) {
+    const alt = o.replace("localhost", "127.0.0.1");
+    if (!corsOrigins.includes(alt)) corsOrigins.push(alt);
+  }
+}
+
 app.use(
   cors({
     origin(origin, callback) {
       // curl / server-to-server / same-origin proxies often omit Origin
       if (!origin) return callback(null, true);
-      if (allowedOrigins.length === 0) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (corsOrigins.length === 0) return callback(null, true);
+      if (corsOrigins.includes(origin)) return callback(null, true);
       console.warn(
-        `[cors] Blocked origin "${origin}". Allowed: ${allowedOrigins.join(", ") || "(none)"}. ` +
+        `[cors] Blocked origin "${origin}". Allowed: ${corsOrigins.join(", ") || "(none)"}. ` +
           `Set FRONTEND_ORIGIN in Coolify/panel to your frontend URL (no trailing slash).`,
       );
       return callback(null, false);
@@ -99,7 +109,7 @@ app.use(
   }),
 );
 console.log(
-  `[cors] Allowed origins: ${allowedOrigins.length ? allowedOrigins.join(", ") : "(all — set FRONTEND_ORIGIN in production)"}`,
+  `[cors] Allowed origins: ${corsOrigins.length ? corsOrigins.join(", ") : "(all — set FRONTEND_ORIGIN in production)"}`,
 );
 app.use(express.json({ limit: "15mb" }));
 app.use("/generated", express.static(GENERATED_DIR));
@@ -151,6 +161,7 @@ protectedApi.use("/inventory", inventoryRoutes);
 protectedApi.use("/products", productsRoutes);
 protectedApi.use("/purchases", purchasesRoutes);
 protectedApi.use("/purchase-management", purchaseManagementRoutes);
+protectedApi.use("/purchase-bills", purchaseBillsRoutes);
 protectedApi.use("/sales", salesRoutes);
 protectedApi.use("/quotations", quotationsRoutes);
 protectedApi.use("/recommendations", recommendationsRoutes);
@@ -173,33 +184,27 @@ protectedApi.post("/generate-invoice", generateInvoiceController);
 
 app.use("/api", protectedApi);
 
-console.log("[startup] Connecting to MongoDB…");
-await connectMongo();
-console.log("[startup] MongoDB ready — running bootstrap (if needed)…");
-await bootstrapAdminIfEmpty();
-console.log("[startup] Bootstrap complete — binding HTTP server…");
-
 /**
  * Manual MongoDB write check — look in Atlas for collection `battery_write_tests`.
  * Remove or protect this route before any public deployment.
  */
 if (process.env.NODE_ENV !== "production") {
-app.get("/api/test", async (req, res, next) => {
-  try {
-    const testBattery = await Battery.create({
-      brand: "Amaron",
-      model: "150Ah",
-      price: 12000,
-    });
-    res.json({
-      ok: true,
-      message: "Inserted one document. In Atlas: database from MONGODB_URI → collection battery_write_tests",
-      document: testBattery.toObject ? testBattery.toObject() : testBattery,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+  app.get("/api/test", async (req, res, next) => {
+    try {
+      const testBattery = await Battery.create({
+        brand: "Amaron",
+        model: "150Ah",
+        price: 12000,
+      });
+      res.json({
+        ok: true,
+        message: "Inserted one document. In Atlas: database from MONGODB_URI → collection battery_write_tests",
+        document: testBattery.toObject ? testBattery.toObject() : testBattery,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
 }
 
 app.use(errorHandler);
@@ -216,7 +221,7 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   console.log("[startup] SUCCESS — Battery Inventory API is running");
   console.log(`[startup] Listening on 0.0.0.0:${PORT}`);
   console.log(`[startup] Health check: GET /api/health`);
-  console.log(`[startup] Database: ${dbOk ? "CONNECTED" : "DISCONNECTED"}`);
+  console.log(`[startup] Database: ${dbOk ? "CONNECTED" : "connecting…"}`);
   console.log(`[startup] Public base URL: ${publicBaseUrl()}`);
   console.log("============================================================");
   console.log(`[static] Quotation PDFs: ${GENERATED_DIR}`);
@@ -238,6 +243,31 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   }
   startQuotationCleanupCron();
   startPurchaseReminderCron();
+});
+
+async function bootstrapDatabase() {
+  console.log("[startup] Connecting to MongoDB…");
+  await connectMongo();
+  console.log("[startup] MongoDB ready — running bootstrap (if needed)…");
+  await bootstrapAdminIfEmpty();
+  console.log("[startup] Bootstrap complete.");
+}
+
+bootstrapDatabase().catch((err) => {
+  console.error("[startup] MongoDB bootstrap failed:", err.message);
+  console.error(
+    "[startup] API is up on port",
+    PORT,
+    "but saves will fail until MongoDB connects. Fix MONGODB_URI or set MONGODB_URI_DIRECT in backend/.env.",
+  );
+  const retryMs = 15000;
+  const retry = () => {
+    bootstrapDatabase().catch((e) => {
+      console.error("[startup] MongoDB retry failed:", e.message, `(next in ${retryMs / 1000}s)`);
+      setTimeout(retry, retryMs);
+    });
+  };
+  setTimeout(retry, retryMs);
 });
 
 server.on("error", (err) => {

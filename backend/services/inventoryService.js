@@ -297,12 +297,23 @@ export async function updateProduct(id, data, { branchId = null, isSuperAdmin = 
     batteryBossPrice: data.batteryBossPrice ?? legacy.batteryBossPrice,
     batteryType: data.batteryType ?? legacy.batteryType,
     warranty: data.warranty ?? legacy.warranty,
+    batteryImage: data.batteryImage ?? legacy.batteryImage,
+    inverterImage: data.inverterImage ?? legacy.inverterImage ?? legacy.image,
+    brandLogo: data.brandLogo ?? legacy.brandLogo ?? legacy.brandDefaultImage,
   };
   const n = normalizeProduct(merged, bid);
   const row = normalizedToImportRow(n);
   const setDoc = importRowToCategoryDocument(found.categoryKey, row, String(bid));
   delete setDoc.legacyId;
   delete setDoc.srNo;
+  const imgFields = ["batteryImage", "inverterImage", "brandLogo"];
+  for (const f of imgFields) {
+    const next = data[f] !== undefined ? String(data[f] ?? "").trim() : String(found.lean[f] ?? merged[f] ?? "").trim();
+    if (next) setDoc[f] = next;
+    else delete setDoc[f];
+  }
+  if (setDoc.inverterImage) setDoc.image = setDoc.inverterImage;
+  if (setDoc.brandLogo) setDoc.brandDefaultImage = setDoc.brandLogo;
   const updateOp = { $set: setDoc };
   if (found.categoryKey === CATEGORY.INVERTER) {
     updateOp.$unset = { dpPlusGst: "", notes: "", srNo: "" };

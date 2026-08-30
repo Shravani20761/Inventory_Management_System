@@ -29,6 +29,9 @@ const inverterInventoryCatalogSchema = new mongoose.Schema(
     batteryBossPrice: { type: Number, default: 0 },
     image: { type: String, default: "" },
     brandDefaultImage: { type: String, default: "" },
+    batteryImage: { type: String, default: "" },
+    inverterImage: { type: String, default: "" },
+    brandLogo: { type: String, default: "" },
   },
   { timestamps: true, collection: "inverter_inventory" },
 );

@@ -19,6 +19,9 @@ const trolleyInventorySchema = new mongoose.Schema(
     price: { type: Number, default: 0 },
     quantity: { type: Number, default: 0, min: 0 },
     notes: { type: String, default: "" },
+    batteryImage: { type: String, default: "" },
+    inverterImage: { type: String, default: "" },
+    brandLogo: { type: String, default: "" },
   },
   { timestamps: true, collection: "trolley_inventory" },
 );

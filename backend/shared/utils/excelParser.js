@@ -13,84 +13,17 @@ import {
   isTrolleySection,
 } from "../constants/inventoryTypes.js";
 import { canonicalAutomotiveBrand } from "../constants/inventoryCategories.js";
+import {
+  AUTOMOTIVE_COLUMN_MAP,
+  getFieldLabel,
+  getRequiredFieldRulesForImportType,
+  getAllFieldOptionsForImportType,
+  isValidFieldKeyForImportType,
+} from "../constants/inventoryColumnMapping.js";
 
-const COLUMN_MAP = {
-  srNo: ["sr.no", "sr no", "srno", "s.no", "serial", "serial no", "serial number"],
-  model: [
-    "model",
-    "model name",
-    "model number",
-    "model no",
-    "model no.",
-    "battery model",
-    "product",
-    "product name",
-    "part number",
-    "part no",
-    "sku",
-    "item code",
-  ],
-  brand: ["brand", "manufacturer", "make"],
-  batteryType: ["battery type", "batt type", "cell type"],
-  type: [
-    "type",
-    "category",
-    "inverter+battery",
-    "inverter battery",
-    "inv+battery",
-    "inv + battery",
-    "inv+batt",
-    "combo type",
-    "combo sku",
-  ],
-  productCapacity: [
-    "product capacity",
-    "prod capacity",
-    "capacity (",
-    "spec",
-    "capacity spec",
-    "technical",
-    "voltage",
-    "product cap",
-    "volt watt ah",
-    "v/w/ah",
-    "rating",
-    "battery spec",
-    "batt spec",
-  ],
-  ah: ["ah capacity", "amp hour", "amp-hour", "amperage", "ampere", "amps"],
-  quantity: ["quantity", "qty", "stock", "units", "available"],
-  weight: ["weight", "wt"],
-  scrapRate: ["scrap rate", "scrap"],
-  dpPlusGst: ["dp + gst", "dp+gst", "dpgst", "dp gst", "dealer price", "dp  gst", "dp gst", "dp", "distributor price"],
-  cd: ["cd", "cash discount", "cash discount price", "cash price"],
-  warranty: ["warranty", "guarantee", "warranty period", "warranty (months)", "warranty months", "warr"],
-  mrp: ["mrp", "max retail", "m.r.p", "m.r.p."],
-  newRateWithOB: [
-    "new rate with ob",
-    "rate with ob",
-    "with old battery",
-    "with ob",
-    "new rate — with ob",
-    "new rate - with ob",
-  ],
-  newRateWithoutOB: [
-    "new rate w/o b",
-    "new rate without",
-    "without old battery",
-    "without ob",
-    "w/o ob",
-    "w/o b",
-    "no ob",
-  ],
-  purchaseRate: ["purchase rate", "purchase price", "buy rate", "buy price", "cost", "purchase"],
-  sellRate: ["sell rate", "sell price", "selling price", "sale price"],
-  supplier: ["supplier", "vendor", "distributor"],
-  invoiceNo: ["invoice", "invoice no", "invoice number", "bill no", "bill number"],
-  place: ["place", "location", "city"],
-};
+const COLUMN_MAP = AUTOMOTIVE_COLUMN_MAP;
 
-function normalizeHeader(h) {
+export function normalizeHeader(h) {
   return String(h ?? "")
     .replace(/^\ufeff/, "")
     .replace(/\u00a0/g, " ")
@@ -137,17 +70,7 @@ function looksLikeSimpleBikeCapacityText(text) {
 export function cellString(val) {
   if (val == null || val === "") return "";
   if (typeof val === "number" && Number.isFinite(val)) {
-    try {
-      if (val > 59e3 && val < 1e6 && typeof XLSX.SSF?.parse_date_code === "function") {
-        const d = XLSX.SSF.parse_date_code(val);
-        if (d?.y) {
-          const dt = new Date(Date.UTC(d.y, d.m - 1, d.d));
-          return dt.toISOString().slice(0, 10);
-        }
-      }
-    } catch {
-      /* not an Excel date serial */
-    }
+    // Keep inventory prices/qty as numbers — never interpret as Excel date serials.
     return String(val);
   }
   if (val instanceof Date) return val.toISOString().slice(0, 10);
@@ -159,91 +82,123 @@ export function cellString(val) {
   return normalizePipesForSpec(String(val).trim());
 }
 
-function findColumnKey(header, importType) {
+/** Short/generic aliases must match the whole header — never as a substring (e.g. "rate" must not steal "scrap rate"). */
+const EXACT_ONLY_ALIASES = new Set([
+  "rate",
+  "price",
+  "scrap",
+  "cost",
+  "purchase",
+  "dp",
+  "cd",
+  "ah",
+  "wt",
+  "qty",
+  "stock",
+  "type",
+  "make",
+  "model",
+  "brand",
+  "sku",
+]);
+
+function aliasMatchesHeader(h, alias) {
+  if (!alias) return false;
+  if (h === alias) return true;
+  if (EXACT_ONLY_ALIASES.has(alias)) return false;
+  if (alias.length <= 3) return false;
+  if (!h.includes(alias)) return false;
+  // Prefer whole-phrase / word-boundary style matches over accidental substrings.
+  try {
+    const re = new RegExp(`(?:^|\\b)${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\b|$)`, "i");
+    return re.test(h);
+  } catch {
+    return h.includes(alias);
+  }
+}
+
+function matchOrderedColumnMap(h, ordered) {
+  // Pass 1: exact header === alias (most reliable).
+  for (const { key, aliases } of ordered) {
+    for (const a of aliases || []) {
+      if (a && h === a) {
+        if (key === "newRateWithOB" && /without|w\/o/i.test(h)) continue;
+        return key;
+      }
+    }
+  }
+  // Pass 2: longer / phrase includes (skip exact-only short tokens).
+  for (const { key, aliases } of ordered) {
+    for (const a of aliases || []) {
+      if (!aliasMatchesHeader(h, a)) continue;
+      if (key === "newRateWithOB" && /without|w\/o/i.test(h)) continue;
+      if (key === "newRateWithOB" && /\bscrap\b/i.test(h)) continue;
+      return key;
+    }
+  }
+  return null;
+}
+
+export function findColumnKey(header, importType) {
   const h = normalizeHeader(header);
   if (!h) return null;
 
   if (looksLikePipeCapacitySpec(h)) return "productCapacity";
 
+  // Scrap must win over any "… rate …" / "… price …" selling aliases.
+  if (/\bscrap\b/.test(h)) return "scrapRate";
+
   if (isInverterBatterySection(importType)) {
-    for (const { key, aliases } of COMBO_COLUMN_MAP_ORDERED) {
-      for (const a of aliases) {
-        if (!a) continue;
-        if (h === a) return key;
-        if (!h.includes(a)) continue;
-        if (key === "newRateWithOB" && a === "with ob" && /without|w\/o/i.test(h)) continue;
-        return key;
-      }
-    }
+    const k = matchOrderedColumnMap(h, COMBO_COLUMN_MAP_ORDERED);
+    if (k) return k;
   }
 
   if (isHomeInverterBatterySection(importType)) {
-    for (const { key, aliases } of HOME_INVERTER_BATTERY_COLUMN_MAP_ORDERED) {
-      for (const a of aliases) {
-        if (!a) continue;
-        if (h === a) return key;
-        if (a.length <= 3) continue;
-        if (!h.includes(a)) continue;
-        if (key === "newRateWithOB" && /without|w\/o|w\/o\s*old/i.test(h)) continue;
-        return key;
-      }
-    }
+    const k = matchOrderedColumnMap(h, HOME_INVERTER_BATTERY_COLUMN_MAP_ORDERED);
+    if (k) return k;
   }
 
   if (isInverterOnlySection(importType)) {
-    for (const { key, aliases } of INVERTER_COLUMN_MAP_ORDERED) {
-      for (const a of aliases) {
-        if (!a) continue;
-        if (h === a) return key;
-        if (a.length <= 3) continue;
-        if (!h.includes(a)) continue;
-        return key;
-      }
-    }
+    const k = matchOrderedColumnMap(h, INVERTER_COLUMN_MAP_ORDERED);
+    if (k) return k;
   }
 
   if (isTrolleySection(importType)) {
-    for (const { key, aliases } of TROLLEY_COLUMN_MAP_ORDERED) {
-      for (const a of aliases) {
-        if (!a) continue;
-        if (h === a) return key;
-        if (a.length <= 3) continue;
-        if (!h.includes(a)) continue;
-        return key;
-      }
-    }
+    const k = matchOrderedColumnMap(h, TROLLEY_COLUMN_MAP_ORDERED);
+    if (k) return k;
   }
 
   if (isLithiumIonBatterySection(importType)) {
-    for (const { key, aliases } of LITHIUM_ION_BATTERY_COLUMN_MAP_ORDERED) {
-      for (const a of aliases) {
-        if (!a) continue;
-        if (h === a) return key;
-        if (a.length <= 3) continue;
-        if (!h.includes(a)) continue;
+    const k = matchOrderedColumnMap(h, LITHIUM_ION_BATTERY_COLUMN_MAP_ORDERED);
+    if (k) return k;
+  }
+
+  // Automotive / fallback: without-old before with-old; scrap already handled above.
+  const withoutFirst = [
+    { key: "newRateWithoutOB", aliases: COLUMN_MAP.newRateWithoutOB },
+    { key: "newRateWithOB", aliases: COLUMN_MAP.newRateWithOB },
+  ];
+  for (const { key, aliases } of withoutFirst) {
+    for (const a of aliases || []) {
+      if (a && h === a) {
+        if (key === "newRateWithOB" && /without|w\/o/i.test(h)) continue;
         return key;
       }
     }
   }
-
-  for (const a of COLUMN_MAP.newRateWithoutOB) {
-    if (h === a || h.includes(a)) return "newRateWithoutOB";
-  }
-  for (const a of COLUMN_MAP.newRateWithOB) {
-    if (!a) continue;
-    if (h === a || h.includes(a)) {
-      if (a === "with ob" && /without|w\/o/i.test(h)) continue;
-      return "newRateWithOB";
+  for (const { key, aliases } of withoutFirst) {
+    for (const a of aliases || []) {
+      if (!aliasMatchesHeader(h, a)) continue;
+      if (key === "newRateWithOB" && /without|w\/o/i.test(h)) continue;
+      return key;
     }
   }
 
-  for (const [key, aliases] of Object.entries(COLUMN_MAP)) {
-    if (key === "newRateWithOB" || key === "newRateWithoutOB") continue;
-    for (const a of aliases) {
-      if (!a) continue;
-      if (h === a || h.includes(a)) return key;
-    }
-  }
+  const automotiveOrdered = Object.entries(COLUMN_MAP)
+    .filter(([key]) => key !== "newRateWithOB" && key !== "newRateWithoutOB")
+    .map(([key, aliases]) => ({ key, aliases }));
+  const autoKey = matchOrderedColumnMap(h, automotiveOrdered);
+  if (autoKey) return autoKey;
 
   if (/\bmodel\b/.test(h) && !/\bmodel\s*(year|line)\b/.test(h)) return "model";
 
@@ -254,8 +209,36 @@ function findColumnKey(header, importType) {
 
 function parseNumber(val) {
   if (val == null || val === "") return 0;
-  const n = Number(String(val).replace(/[,₹\s]/g, "").trim());
+  if (typeof val === "number" && Number.isFinite(val)) return val;
+  let s = cellString(val).trim();
+  if (!s) return 0;
+  // Currency / Indian formats: ₹4,051.00 / Rs.4051 / 4051/-
+  s = s
+    .replace(/rs\.?/gi, "")
+    .replace(/[₹$€£¥,\s]/g, "")
+    .replace(/\/-?\s*$/g, "")
+    .trim();
+  const m = s.match(/-?\d+(?:\.\d+)?/);
+  if (m) return Number(m[0]);
+  const n = Number(s);
   return Number.isFinite(n) ? n : 0;
+}
+
+/** "150 AH", "10 pcs" → numeric portion only. */
+function parseQuantityCell(val) {
+  const s = cellString(val).trim();
+  if (!s) return 0;
+  const m = s.match(/^(\d+(?:\.\d+)?)/);
+  if (m) return Number(m[1]);
+  return parseNumber(s);
+}
+
+function parseAhCell(val) {
+  const s = cellString(val).trim();
+  if (!s) return 0;
+  const m = s.match(/(\d+(?:\.\d+)?)\s*ah\b/i);
+  if (m) return Number(m[1]);
+  return parseNumber(s);
 }
 
 /** Cells like "1100 VA", "900va" (Excel text) — plain parseNumber yields NaN. */
@@ -374,6 +357,155 @@ function buildColToKeyFromLabels(labels, importType) {
     colToKey[j] = k;
   });
   return colToKey;
+}
+
+/** Propose header → field mapping for import preview (does not discard duplicate candidates). */
+export function proposeColumnMappingFromLabels(labels, importType) {
+  const columns = [];
+  const fieldToCols = new Map();
+
+  labels.forEach((label, index) => {
+    const raw = cellString(label).trim();
+    const normalized = normalizeHeader(raw);
+    const mappedField = raw ? findColumnKey(raw, importType) : null;
+    let status = "empty";
+    if (raw) status = mappedField ? "mapped" : "unmapped";
+    columns.push({
+      index,
+      header: raw || `(Column ${index + 1})`,
+      normalizedHeader: normalized,
+      mappedField,
+      mappedLabel: mappedField ? getFieldLabel(importType, mappedField) : null,
+      status,
+    });
+    if (mappedField) {
+      if (!fieldToCols.has(mappedField)) fieldToCols.set(mappedField, []);
+      fieldToCols.get(mappedField).push({ index, header: raw || `(Column ${index + 1})` });
+    }
+  });
+
+  const duplicateFields = [];
+  for (const [fieldKey, cols] of fieldToCols) {
+    if (cols.length > 1) {
+      duplicateFields.push({
+        fieldKey,
+        fieldLabel: getFieldLabel(importType, fieldKey),
+        columns: cols,
+        selectedIndex: cols[0].index,
+      });
+    }
+  }
+
+  return { columns, duplicateFields };
+}
+
+/** User-confirmed mapping: column index → inventory field key (header names, not positions). */
+export function buildColToKeyFromExplicitMapping(mappingByIndex, importType) {
+  const colToKey = {};
+  const usedKeys = new Set();
+  const errors = [];
+
+  for (const [idxStr, fieldKey] of Object.entries(mappingByIndex || {})) {
+    const j = Number(idxStr);
+    if (!Number.isFinite(j) || j < 0) continue;
+    if (fieldKey === "__ignore__" || fieldKey === "" || fieldKey == null) continue;
+    if (!isValidFieldKeyForImportType(importType, fieldKey)) {
+      errors.push(`Invalid inventory field "${fieldKey}" for column index ${j}.`);
+      continue;
+    }
+    if (usedKeys.has(fieldKey)) {
+      errors.push(`Field "${getFieldLabel(importType, fieldKey)}" is mapped more than once. Pick one column per field.`);
+      continue;
+    }
+    usedKeys.add(fieldKey);
+    colToKey[j] = fieldKey;
+  }
+
+  return { colToKey, errors };
+}
+
+/** Resolve header row + column mapping from sheet rows (header-based, not fixed index). */
+export function resolveSheetHeaderMapping(aoa, importType, options = {}) {
+  const h = findBestHeaderRowIndex(aoa, importType);
+  if (h < 0) return { ok: false, error: "no_header" };
+
+  const row0 = aoa[h] || [];
+  const labels0 = row0.map((c) => cellString(c));
+  let effectiveLabels = labels0;
+  let colToKey = buildColToKeyFromLabels(labels0, importType);
+  let dataStart = h + 1;
+
+  const nextRow = h + 1 < aoa.length ? aoa[h + 1] : null;
+  if (nextRow && shouldMergeSubHeaderRow(nextRow, importType)) {
+    const mergedLabels = mergeHeaderLabels(row0, nextRow);
+    const colMerged = buildColToKeyFromLabels(mergedLabels, importType);
+    const mergedJoin = mergedLabels.join(" ").toLowerCase();
+    const betterKeys = countMappedKeys(colMerged) > countMappedKeys(colToKey);
+    const hasSplitRate = /with\s*ob|w\/o\s*b|old\s*battery/i.test(mergedJoin);
+    if (betterKeys || (hasSplitRate && countMappedKeys(colMerged) >= countMappedKeys(colToKey))) {
+      colToKey = colMerged;
+      dataStart = h + 2;
+      effectiveLabels = mergedLabels;
+    }
+  }
+
+  if (options.columnMappingByIndex && Object.keys(options.columnMappingByIndex).length) {
+    const { colToKey: explicit, errors } = buildColToKeyFromExplicitMapping(
+      options.columnMappingByIndex,
+      importType,
+    );
+    if (errors.length) return { ok: false, errors };
+    colToKey = explicit;
+  }
+
+  colToKey = inferProductCapacityColumnIfUnlabeled(colToKey, effectiveLabels, importType);
+
+  const { columns, duplicateFields } = proposeColumnMappingFromLabels(effectiveLabels, importType);
+
+  return {
+    ok: true,
+    headerIdx: h,
+    effectiveLabels,
+    colToKey,
+    dataStart,
+    columns,
+    duplicateFields,
+  };
+}
+
+export function evaluateRequiredFields(importType, colToKey) {
+  const mappedKeys = new Set(Object.values(colToKey));
+  const rules = getRequiredFieldRulesForImportType(importType);
+  return rules.map((rule) => {
+    const keys = [rule.key, ...(rule.altKeys || [])];
+    const satisfied = keys.some((k) => mappedKeys.has(k));
+    return {
+      key: rule.key,
+      label: rule.label,
+      satisfied,
+      status: satisfied ? "ok" : "missing",
+    };
+  });
+}
+
+export function readWorkbookBestSheet(data, importType) {
+  const workbook = XLSX.read(data, { type: "array", cellDates: true });
+  const names = workbook.SheetNames || [];
+  let bestPick = { sheetName: names[0] || "", aoa: [], h: -1, score: -1 };
+  for (const sheetName of names) {
+    const sh = workbook.Sheets[sheetName];
+    if (!sh) continue;
+    const aoaPart = XLSX.utils.sheet_to_json(sh, { header: 1, defval: "", raw: false });
+    if (!aoaPart.length) continue;
+    const hPart = findBestHeaderRowIndex(aoaPart, importType);
+    if (hPart < 0) continue;
+    const labelsPart = (aoaPart[hPart] || []).map((c) => cellString(c));
+    const sPart = scoreHeaderLabels(labelsPart, importType);
+    if (sPart > bestPick.score) {
+      bestPick = { sheetName, aoa: aoaPart, h: hPart, score: sPart };
+    }
+  }
+  return { workbook, names, bestPick };
 }
 
 function countMappedKeys(colToKey) {
@@ -761,76 +893,70 @@ export async function parseBatteryExcelFile(file, options = {}) {
 
         const h = bestPick.h >= 0 ? bestPick.h : findBestHeaderRowIndex(aoa, importType);
         if (h >= 0) {
-          headerIdx = h;
-          const row0 = aoa[h] || [];
-          const labels0 = row0.map((c) => cellString(c));
-          let effectiveLabels = labels0;
-          let colToKey = buildColToKeyFromLabels(labels0, importType);
-          let dataStart = h + 1;
-
-          const nextRow = h + 1 < aoa.length ? aoa[h + 1] : null;
-          if (nextRow && shouldMergeSubHeaderRow(nextRow, importType)) {
-            const mergedLabels = mergeHeaderLabels(row0, nextRow);
-            const colMerged = buildColToKeyFromLabels(mergedLabels, importType);
-            const mergedJoin = mergedLabels.join(" ").toLowerCase();
-            const betterKeys = countMappedKeys(colMerged) > countMappedKeys(colToKey);
-            const hasSplitRate = /with\s*ob|w\/o\s*b|old\s*battery/i.test(mergedJoin);
-            if (betterKeys || (hasSplitRate && countMappedKeys(colMerged) >= countMappedKeys(colToKey))) {
-              colToKey = colMerged;
-              dataStart = h + 2;
-              effectiveLabels = mergedLabels;
-            }
-          }
-
-          colToKey = inferProductCapacityColumnIfUnlabeled(colToKey, effectiveLabels, importType);
-
-          const sheetName0 = bestPick.sheetName || names[0] || "";
-          const bikeHint = `${sheetName0} ${fileName} ${effectiveLabels.join(" ")}`.toLowerCase();
-          inferredBike = /\b(bike|two[\s-]*wheel|motorcycle|scooter|moped)\b/.test(bikeHint);
-
-          const identityCol = findPrimaryIdentityColumnIndex(colToKey, importType);
-          if (identityCol < 0) {
-            return {
-              batteries: [],
-              errors: isInverterBatterySection(importType)
-                ? [
-                    "Could not map Combo ID, Model, Inverter Model, or Battery Model from the header row.",
-                    "Use clear headers such as “Combo ID”, “Inverter Model”, “Battery Model”, or “Model Number”.",
-                  ]
-                : isInverterOnlySection(importType)
-                  ? [
-                      "Found a header row on a sheet but could not map an “Inverter Model Number” / Model column.",
-                      "Use a clear header such as “Inverter Model Number”, “Model”, or “SKU”.",
-                    ]
-                  : isTrolleySection(importType)
-                    ? [
-                        "Found a header row but could not map a Trolley Model Number / Model column.",
-                        "Use headers such as “Trolley Model Number”, “Brand”, “Compatible VA”, “DP”, “CD”, and “Price”.",
-                      ]
-                  : isLithiumIonBatterySection(importType)
-                    ? [
-                        "Could not map Lithium Ion Battery headers. Required: Battery Model Number (or Model), DP, and CD.",
-                        "Use headers such as “Battery Model Number”, “Brand”, “Voltage (V)”, “Product Capacity (AH)”, “DP”, “CD”, and “MRP FINAL”.",
-                      ]
-                  : isHomeInverterBatterySection(importType)
-                    ? [
-                        "Could not map “Battery Model Number” (or Model) from the header row.",
-                        "Use clear headers such as “Battery Model Number”, “Brand”, and “DP + GST”.",
-                      ]
-                    : [
-                        "Found header-like text but could not map a Model / Model Number column after merge.",
-                        "Try unmerging header cells or put “Model Number” in one clear cell.",
-                      ],
-            };
-          }
-
-          dataRows = extractDataRows(aoa, dataStart, colToKey, identityCol, importType);
-
-          labels0.forEach((cell, j) => {
-            const key = findColumnKey(cell, importType);
-            if (key) mapping[cell || `__col${j}`] = key;
+          const resolved = resolveSheetHeaderMapping(aoa, importType, {
+            columnMappingByIndex: options.columnMappingByIndex,
           });
-        } else {
+          if (!resolved.ok) {
+            if (resolved.errors?.length) {
+              return { batteries: [], errors: resolved.errors, mappedColumns: {} };
+            }
+            /* fall through */
+          } else {
+            headerIdx = resolved.headerIdx;
+            const labels0 = (aoa[headerIdx] || []).map((c) => cellString(c));
+            const colToKey = resolved.colToKey;
+            const dataStart = resolved.dataStart;
+            const effectiveLabels = resolved.effectiveLabels;
+
+            const sheetName0 = bestPick.sheetName || names[0] || "";
+            const bikeHint = `${sheetName0} ${fileName} ${effectiveLabels.join(" ")}`.toLowerCase();
+            inferredBike = /\b(bike|two[\s-]*wheel|motorcycle|scooter|moped)\b/.test(bikeHint);
+
+            const identityCol = findPrimaryIdentityColumnIndex(colToKey, importType);
+            if (identityCol < 0) {
+              return {
+                batteries: [],
+                errors: isInverterBatterySection(importType)
+                  ? [
+                      "Could not map Combo ID, Model, Inverter Model, or Battery Model from the header row.",
+                      "Use clear headers such as “Combo ID”, “Inverter Model”, “Battery Model”, or “Model Number”.",
+                    ]
+                  : isInverterOnlySection(importType)
+                    ? [
+                        "Found a header row on a sheet but could not map an “Inverter Model Number” / Model column.",
+                        "Use a clear header such as “Inverter Model Number”, “Model”, or “SKU”.",
+                      ]
+                    : isTrolleySection(importType)
+                      ? [
+                          "Found a header row but could not map a Trolley Model Number / Model column.",
+                          "Use headers such as “Trolley Model Number”, “Brand”, “Compatible VA”, “DP”, “CD”, and “Price”.",
+                        ]
+                      : isLithiumIonBatterySection(importType)
+                        ? [
+                            "Could not map Lithium Ion Battery headers. Required: Battery Model Number (or Model), DP, and CD.",
+                            "Use headers such as “Battery Model Number”, “Brand”, “Voltage (V)”, “Product Capacity (AH)”, “DP”, “CD”, and “MRP FINAL”.",
+                          ]
+                        : isHomeInverterBatterySection(importType)
+                          ? [
+                              "Could not map “Battery Model Number” (or Model) from the header row.",
+                              "Use clear headers such as “Battery Model Number”, “Brand”, and “DP + GST”.",
+                            ]
+                          : [
+                              "Found header-like text but could not map a Model / Model Number column after merge.",
+                              "Try unmerging header cells or put “Model Number” in one clear cell.",
+                            ],
+              };
+            }
+
+            dataRows = extractDataRows(aoa, dataStart, colToKey, identityCol, importType);
+
+            labels0.forEach((cell, j) => {
+              const key = colToKey[j] || findColumnKey(cell, importType);
+              if (key) mapping[cell || `__col${j}`] = key;
+            });
+          }
+        }
+        if (headerIdx < 0) {
           const sheetName0 = names[0] || "";
           inferredBike = /\b(bike|two[\s-]*wheel|motorcycle|scooter|moped)\b/.test(
             `${sheetName0} ${fileName}`.toLowerCase(),
@@ -942,8 +1068,8 @@ export async function parseBatteryExcelFile(file, options = {}) {
           item = repairPipeSpecCapacityRow(item);
           const modelRaw =
             isHomeInv || isLithiumIonSheet
-              ? cellString(item.batteryModel || item.model).trim()
-              : cellString(item.model).trim();
+              ? cellString(item.batteryModel || item.model || item.sku).trim()
+              : cellString(item.model || item.sku).trim();
           if (!modelRaw) {
             skipped++;
             return;
@@ -975,7 +1101,7 @@ export async function parseBatteryExcelFile(file, options = {}) {
             : parseNumber(item.newRateWithOB) || parseNumber(item.sellRate);
           const wo = isInvOnly ? 0 : parseNumber(item.newRateWithoutOB);
           const ahFromCap = parseAhFromProductCapacity(String(item.productCapacity || ""));
-          const batteryAHNum = parseNumber(item.batteryAH) || parseNumber(item.ah) || ahFromCap;
+          const batteryAHNum = parseAhCell(item.batteryAH) || parseAhCell(item.ah) || ahFromCap;
           let invVA = parseInverterVaCell(item.inverterVA);
           if (isTrolley) {
             const trolleyVa = parseInverterVaCell(item.compatibleVA);
@@ -1045,7 +1171,7 @@ export async function parseBatteryExcelFile(file, options = {}) {
             backupSupport: backupSup,
             suitableFor: String(item.suitableFor || "").trim(),
             comboCategory: isHomeInv ? homeSys : String(item.comboCategory || "").trim(),
-            quantity: parseNumber(item.quantity) || 1,
+            quantity: parseQuantityCell(item.quantity) || 1,
             weight: parseNumber(item.batteryWeight ?? item.weight),
             batteryWeight: parseNumber(item.batteryWeight ?? item.weight),
             scrapRate: parseNumber(item.scrapRate),

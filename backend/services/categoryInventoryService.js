@@ -126,7 +126,15 @@ export function categoryMeta(key) {
 
 function num(v) {
   if (v == null || v === "") return 0;
-  const n = Number(String(v).replace(/[,₹]/g, "").trim());
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  let s = String(v)
+    .replace(/rs\.?/gi, "")
+    .replace(/[₹$€£¥,\s]/g, "")
+    .replace(/\/-?\s*$/g, "")
+    .trim();
+  const m = s.match(/-?\d+(?:\.\d+)?/);
+  if (m) return Number(m[0]);
+  const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -245,7 +253,8 @@ export function bikeToLegacy(d) {
 }
 
 export function inverterToLegacy(d) {
-  const sell = num(d.price) || num(d.mrp);
+  const mrpN = num(d.mrp);
+  const sell = num(d.price) || num(d.sellRate) || mrpN;
   const dp = num(d.dp ?? d.dpPrice ?? d.dpPlusGst ?? d.purchaseRate);
   const cd = num(d.cd ?? d.cdPrice);
   return {
@@ -265,7 +274,7 @@ export function inverterToLegacy(d) {
     sellingRate: sell,
     sellRate: sell,
     newRateWithOB: sell,
-    mrp: num(d.mrp) || sell,
+    mrp: mrpN || sell,
     quantity: num(d.quantity),
     warranty: d.warranty ?? "",
     batteryType: d.technology ?? "",
@@ -278,7 +287,7 @@ export function inverterToLegacy(d) {
 /** Dynamic quotation catalog (`inverter_inventory`) → legacy row for Inventory UI + sync. */
 export function inverterCatalogToLegacy(d) {
   const mrpN = num(d.mrp);
-  const sell = mrpN || num(d.price);
+  const sell = num(d.price) || num(d.sellRate) || num(d.newRateWithOB) || mrpN;
   const va = num(d.inverterVA);
   const pc = String(d.productCapacity ?? "").trim() || (va ? `${va} VA` : "");
   const dp = num(d.dp ?? d.dpPrice ?? d.dpPlusGst);
@@ -851,7 +860,7 @@ function rowToInverterDoc(row, bid) {
   const mrpN = num(row.mrp ?? row.mrpFinal);
   const dp = num(row.dp ?? row.dpPrice ?? row.dpPlusGst ?? row.purchaseRate);
   const cd = num(row.cd ?? row.cdPrice);
-  const sell = mrpN || num(row.newRateWithOB ?? row.sellRate ?? row.sellingRate ?? row.price);
+  const sell = num(row.sellRate ?? row.newRateWithOB ?? row.sellingRate ?? row.price) || mrpN;
   return {
     branchId: bid,
     type: "Inverter",
@@ -1245,15 +1254,21 @@ export async function mergeCategoryRowsFromParsed(categoryKey, incoming, branchI
   );
 
   for (const [id, { qty, docShape, setQuantity: replaceQty }] of aggUpdates) {
-    const doc = await Model.findById(id);
-    if (!doc) continue;
-    const nextQty = replaceQty ? qty : num(doc.quantity) + qty;
-    Object.assign(doc, {
-      ...docShape,
-      quantity: nextQty,
-      branchId: bid,
-    });
-    await doc.save();
+    try {
+      const existing = await Model.findOne({ _id: id, branchId: bid }).lean();
+      if (!existing) {
+        console.warn(`[category:${categoryKey}] skip update — missing _id ${id}`);
+        continue;
+      }
+      const nextQty = replaceQty ? qty : num(existing.quantity) + qty;
+      const { _id: _dropId, ...shapeWithoutId } = docShape;
+      await Model.updateOne(
+        { _id: id, branchId: bid },
+        { $set: { ...shapeWithoutId, quantity: nextQty, branchId: bid } },
+      );
+    } catch (e) {
+      console.warn(`[category:${categoryKey}] update failed for _id ${id}:`, e.message);
+    }
   }
 
   const rows = await listCategory(categoryKey, { branchId, isSuperAdmin: false });

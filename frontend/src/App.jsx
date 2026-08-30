@@ -9,7 +9,7 @@ import { INVERTER_INVENTORY_TABLE_COLUMNS, INVERTER_INVENTORY_TABLE_GROUPS } fro
 import { TROLLEY_INVENTORY_TABLE_COLUMNS, TROLLEY_INVENTORY_TABLE_GROUPS } from "./constants/trolleyInventoryImport.js";
 import { LITHIUM_ION_BATTERY_TABLE_COLUMNS, LITHIUM_ION_BATTERY_TABLE_GROUPS } from "./constants/lithiumIonBatteryImport.js";
 import { HOME_INVERTER_BATTERY_TABLE_COLUMNS, HOME_INVERTER_BATTERY_TABLE_GROUPS } from "./constants/homeInverterBatteryImport.js";
-import { inventoryRowsMatch, nextNumericInventoryId, removeInventoryRow, resolveInventoryUpdateId } from "./utils/inventoryIds.js";
+import { inventoryRowsMatch, nextNumericInventoryId, removeInventoryRow, resolveInventoryUpdateId, inventoryRowIdKey } from "./utils/inventoryIds.js";
 import { sortInventoryForDisplay, inventoryDisplaySerial } from "./utils/inventoryDisplayOrder.js";
 import { PurchaseAndSales } from "./purchaseSales.jsx";
 import {
@@ -29,6 +29,8 @@ import { StockTransfersPage } from "./components/StockTransfers.jsx";
 import AccountsReports from "./pages/AccountsReports.jsx";
 import { GlobalInventorySearch } from "./components/GlobalInventorySearch.jsx";
 import { InventoryCategoryNav } from "./components/InventoryCategoryNav.jsx";
+import { VehicleBatteryRecommend } from "./components/VehicleBatteryRecommend.jsx";
+import { VehicleFitmentAdmin } from "./pages/VehicleFitmentAdmin.jsx";
 import {
   getInventoryCategory,
   inventoryBrandCounts,
@@ -41,6 +43,7 @@ import {
   isAutomotiveInventoryCategory,
 } from "./constants/inventoryCategories.js";
 import { css } from "./appStyles.js";
+import { ProductImageFrames } from "./components/ProductImageFrames.jsx";
 
 /** Fresh install: no seed rows. Data loads from `/sync/all` when API is online, or you add/import items. */
 const INITIAL_INVENTORY = [];
@@ -98,6 +101,8 @@ const NAV_ICONS = {
   recommendations: "ti-bulb",
   quotations: "ti-file-text",
   invoices: "ti-receipt",
+  accounts: "ti-report-money",
+  "vehicle-fitments": "ti-car",
 };
 
 export default function App() {
@@ -126,6 +131,9 @@ export default function App() {
   const userBranchIdRef = useRef(user?.branchId);
   /** When true, ignore late `/sync/all` inventory payloads so a slow first load cannot undo a delete. */
   const skipServerInventoryReplace = useRef(false);
+  const pauseAutoSync = useRef(false);
+  /** Avoid PUT /sync/all before first GET /sync/all completes (prevents empty payload during startup). */
+  const hasHydratedFromApi = useRef(false);
 
   const setInventoryFromUser = useCallback((updater) => {
     skipServerInventoryReplace.current = true;
@@ -175,10 +183,15 @@ export default function App() {
       const ok = await isApiAvailable();
       if (cancelled) return;
       setApiOnline(ok);
-      if (!ok) return;
+      if (!ok) {
+        setSyncError("Cannot reach API server. Run npm run dev from Inventory_management (API on port 3001).");
+        return;
+      }
+      setSyncError("");
       try {
         const data = await loadFromApi();
         if (cancelled) return;
+        hasHydratedFromApi.current = true;
         if (data.inventory?.length && !skipServerInventoryReplace.current) {
           setInventory(mapInventoryFromServer(data.inventory));
         }
@@ -186,6 +199,7 @@ export default function App() {
         if (data.sales) setSales(data.sales);
         if (data.quotations) setQuotations(sortQuotationsNewestFirst(data.quotations));
         if (data.invoices) setInvoices(data.invoices.map(mapInvoiceRow));
+        setSyncError("");
         try {
           const finals = await api.listFinalQuotations();
           if (!cancelled && Array.isArray(finals) && finals.length) {
@@ -195,7 +209,17 @@ export default function App() {
           /* optional */
         }
       } catch (e) {
-        if (!cancelled) console.warn("Load from API failed:", e.message);
+        if (!cancelled) {
+          console.warn("Load from API failed:", e.message);
+          const msg = e.message || "Load failed";
+          if (/invalid|expired token|401|unauthorized/i.test(msg)) {
+            setSyncError("Session expired — log out and sign in again.");
+          } else if (/cannot reach|failed to fetch|network/i.test(msg)) {
+            setSyncError(msg);
+          } else {
+            setSyncError(`Could not load workspace: ${msg}`);
+          }
+        }
       }
     })();
     return () => {
@@ -203,16 +227,47 @@ export default function App() {
     };
   }, []);
 
+  /** Re-check API health periodically; clear stale sync errors when the server is back. */
+  useEffect(() => {
+    const tick = async () => {
+      try {
+        const h = await api.health();
+        const up = h?.ok === true && h?.database === "mongodb";
+        setApiOnline(up);
+        if (up) {
+          setSyncError((prev) =>
+            prev && (/cannot reach|failed to fetch|bad gateway|not responding|api server/i.test(prev) ? "" : prev),
+          );
+        }
+      } catch {
+        setApiOnline(false);
+      }
+    };
+    const id = setInterval(tick, 20000);
+    return () => clearInterval(id);
+  }, []);
+
   const persistToApi = useCallback(
-    async (payload) => {
+    async (payload, attempt = 0) => {
       if (!apiOnline) return;
       try {
-        setSyncError("");
         await api.saveAll(payload);
+        setSyncError("");
       } catch (e) {
         const msg = e.message || "Save failed";
+        const transient = /failed to fetch|cannot reach|bad gateway|not responding|network|econnrefused|econnreset/i.test(
+          msg,
+        );
+        if (transient && attempt < 3) {
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          return persistToApi(payload, attempt + 1);
+        }
         console.warn("Save to API failed:", msg);
-        setSyncError(msg);
+        if (/invalid|expired token|401|unauthorized/i.test(msg)) {
+          setSyncError("Session expired — log out and sign in again.");
+        } else {
+          setSyncError(msg);
+        }
       }
     },
     [apiOnline],
@@ -222,14 +277,17 @@ export default function App() {
   userBranchIdRef.current = user?.branchId;
 
   useEffect(() => {
-    if (!apiOnline) return;
+    if (!apiOnline || pauseAutoSync.current || !hasHydratedFromApi.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
+      if (pauseAutoSync.current || !hasHydratedFromApi.current) return;
       const snap = persistSnapshotRef.current;
       const ub = userBranchIdRef.current;
       const branchId = ub != null && String(ub).trim() !== "" ? String(ub) : undefined;
       persistToApi({
-        inventory: snap.inventory,
+        // Inventory is saved via category APIs (Excel upload, PUT /inventory/:id).
+        // Bulk PUT /sync/all with stale parent inventory[] caused CarBattery "document not found".
+        inventory: [],
         purchases: snap.purchases,
         sales: snap.sales,
         quotations: snap.quotations,
@@ -238,10 +296,10 @@ export default function App() {
       });
     }, 800);
     return () => clearTimeout(saveTimer.current);
-  }, [inventory, purchases, sales, quotations, invoices, apiOnline, persistToApi, user?.branchId]);
+  }, [purchases, sales, quotations, invoices, apiOnline, persistToApi, user?.branchId]);
 
   const mainBlock = (
-    <main className="main">
+    <main className={contentOnly ? "main main-embedded" : "main"}>
       {syncError ? (
         <div
           role="alert"
@@ -258,12 +316,26 @@ export default function App() {
           <strong>
             {syncError.includes("Cannot reach") || syncError.includes("Failed to fetch")
               ? "API unreachable — changes are not being saved."
-              : "Sync to MongoDB failed."}
+              : syncError.includes("Session expired")
+                ? "Session expired."
+                : "Sync to MongoDB failed."}
           </strong>{" "}
-          {syncError} Check DevTools → Network → <code>PUT /api/sync/all</code> (or <code>PUT sync/all</code> relative
-          to your API base). Run <code>npm run dev</code> so the API listens on port 3001. If you use{" "}
-          <code>VITE_API_URL</code>, use <code>/api</code> for Vite dev proxy or the full URL of the machine running
-          the API. SuperAdmin: ensure a Branch exists or assign your user a branch.
+          {syncError}
+          {syncError.includes("Session expired") ? null : (
+            <>
+              {" "}
+              Open the app at <code>http://localhost:5173</code> with <code>npm run dev</code> running (API on port 3001).
+              Production builds need <code>VITE_API_URL</code> pointing at your live API (see <code>frontend/.env.production.example</code>).
+            </>
+          )}
+          <button
+            type="button"
+            className="btn btn-sm btn-secondary"
+            style={{ marginLeft: 12, verticalAlign: "middle" }}
+            onClick={() => setSyncError("")}
+          >
+            Dismiss
+          </button>
         </div>
       ) : null}
       {page === "dashboard" && (
@@ -281,9 +353,11 @@ export default function App() {
               inventory={inventory}
               setInventory={setInventoryFromUser}
               apiOnline={apiOnline}
+              setApiOnline={setApiOnline}
               modal={modal}
               setModal={setModal}
               user={user}
+              pauseAutoSync={pauseAutoSync}
             />
           )}
           {page === "transfers" && (
@@ -317,6 +391,7 @@ export default function App() {
           )}
           {page === "invoices" && <Invoices invoices={invoices} setInvoices={setInvoices} inventory={inventory} modal={modal} setModal={setModal} />}
           {page === "accounts" && <AccountsReports user={user} />}
+          {page === "vehicle-fitments" && <VehicleFitmentAdmin />}
     </main>
   );
 
@@ -324,7 +399,7 @@ export default function App() {
     return (
       <>
         <style>{css}</style>
-        <div className="app" style={{ gridTemplateColumns: "1fr", minHeight: "100%" }}>
+        <div className="app app-embedded" style={{ minHeight: "100%", width: "100%", maxWidth: "100%" }}>
           {mainBlock}
         </div>
       </>
@@ -730,7 +805,20 @@ function formatInverterTableCell(col, item, serialNumber = null) {
   }
   if (key === "dp") v = item.dp ?? item.dpPrice ?? item.purchaseRate ?? item.dpPlusGst;
   if (key === "cd") v = item.cd ?? item.cdPrice;
-  if (key === "mrp") v = item.mrp ?? item.mrpFinal ?? item.sellRate ?? item.price;
+  if (key === "mrp") v = item.mrp ?? item.mrpFinal;
+  if (key === "sellRate") v = item.sellRate ?? item.price ?? item.newRateWithOB ?? item.sellingRate;
+  if (key === "pl") {
+    const buy = Number(item.dp ?? item.dpPrice ?? item.purchaseRate ?? 0);
+    const sell = Number(item.sellRate ?? item.price ?? item.newRateWithOB ?? item.mrp ?? 0);
+    const profit = sell - buy;
+    const pct = buy ? ((profit / buy) * 100).toFixed(1) : "0.0";
+    if (!buy && !sell) return "—";
+    return (
+      <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`} style={{ padding: "3px 6px", fontSize: 13, display: "inline-block" }}>
+        {profit >= 0 ? "+" : ""}₹{profit.toLocaleString("en-IN")} ({pct}%)
+      </div>
+    );
+  }
   if (v === "" || v == null) return "—";
   if (col.format === "rupee") return `₹${Number(v).toLocaleString("en-IN")}`;
   if (col.format === "num") return Number(v).toLocaleString("en-IN");
@@ -749,6 +837,7 @@ function inverterCellStyle(col) {
     base.fontVariantNumeric = "tabular-nums";
   }
   if (col.group === "pricing") base.background = "#f8fafc";
+  if (col.group === "selling") base.background = "#fffbeb";
   if (col.group === "market") base.background = "#f0fdf4";
   if (col.group === "stock") base.background = "#fefce8";
   return base;
@@ -912,6 +1001,7 @@ function inventoryFormFromItem(item, defaultTypeWhenAdding = "Car", defaultBrand
       dpPlusGst: "",
       mrp: "",
       mrpFinal: "",
+      sellRate: "",
       newRateWithOB: "",
       newRateWithoutOB: "",
       quantity: "",
@@ -947,6 +1037,7 @@ function inventoryFormFromItem(item, defaultTypeWhenAdding = "Car", defaultBrand
     cd: item.cd ?? item.cdPrice ?? "",
     dp: item.dp ?? item.dpPrice ?? item.purchaseRate ?? item.dpPlusGst ?? "",
     mrpFinal: item.mrpFinal ?? item.mrp ?? "",
+    sellRate: item.sellRate ?? item.price ?? item.newRateWithOB ?? item.sellingRate ?? "",
     newRateWithOB: obDisplay ?? "",
     newRateWithoutOB: item.newRateWithoutOB ?? "",
     quantity: item.quantity ?? "",
@@ -1078,7 +1169,7 @@ function mergeCategoryRowsIntoInventory(prev, categoryRows, matchesCategory) {
 }
 
 /** After Excel upload, pick the brand chip that shows newly imported rows. */
-function brandFilterAfterCategoryUpload(category, uploadedBrands) {
+function brandFilterAfterCategoryUpload(category, uploadedBrands, activeBrandFilter) {
   if (!category?.brands?.length || !uploadedBrands?.length) return null;
   const automotive = isAutomotiveInventoryCategory(category);
   const brands = [
@@ -1095,11 +1186,31 @@ function brandFilterAfterCategoryUpload(category, uploadedBrands) {
   if (!brands.length) return null;
   const known = brands.find((b) => category.brands.some((chip) => inventoryBrandMatches(b, chip)));
   if (known) return category.brands.find((chip) => inventoryBrandMatches(known, chip)) ?? null;
+  if (
+    activeBrandFilter &&
+    activeBrandFilter !== "Other" &&
+    category.brands.some((chip) => inventoryBrandMatches(activeBrandFilter, chip))
+  ) {
+    return activeBrandFilter;
+  }
   if (brands.every((b) => normalizeInventoryBrand(b) === "unknown")) return "Other";
   return "Other";
 }
 
-function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }) {
+/** Pick brand chip that actually has rows to display (avoids empty table after upload). */
+function pickBrandFilterShowingRows(category, rows, preferredBrand) {
+  if (!category?.brands?.length) return preferredBrand || "";
+  const scoped = (rows || []).filter((r) => inventoryRowMatchesCategory(r, category));
+  const counts = inventoryBrandCounts(scoped, category);
+  if (preferredBrand) {
+    const pref = counts.find((b) => b.brand === preferredBrand && b.count > 0);
+    if (pref) return preferredBrand;
+  }
+  const first = counts.find((b) => b.count > 0);
+  return first?.brand ?? preferredBrand ?? category.brands[0] ?? "";
+}
+
+function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, setModal, user, pauseAutoSync }) {
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("car-battery");
   const [brandFilter, setBrandFilter] = useState("Exide");
@@ -1117,6 +1228,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
   const isCarBatteryTab = category.tableKind === "automotive-car";
   const isBikeBatteryTab = category.tableKind === "automotive-bike";
   const isAutomotiveTab = isCarBatteryTab || isBikeBatteryTab;
+  const isVehicleRecommendTab = category.tableKind === "vehicle-recommend";
   const defaultTypeWhenAdding = typeFilter;
 
   const fileRef = useRef(null);
@@ -1124,24 +1236,86 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
   const comboImgPickRef = useRef({ mongoId: "", imageField: "inverterImage" });
   const [uploadMsg, setUploadMsg] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState(() => new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [comboImgUploadBusy, setComboImgUploadBusy] = useState(false);
   const [homeTabRows, setHomeTabRows] = useState([]);
   const [homeTabLoading, setHomeTabLoading] = useState(false);
   const [automotiveTabRows, setAutomotiveTabRows] = useState([]);
   const [automotiveTabLoading, setAutomotiveTabLoading] = useState(false);
+  const [listRevision, setListRevision] = useState(0);
 
-  const loadHomeTabRows = useCallback(async () => {
+  const loadHomeTabRows = useCallback(async (bustCache = false) => {
     if (!apiOnline) return [];
-    const rows = await api.listInventoryCategory(HOME_INVERTER_BATTERY_TYPE);
+    const rows = await api.listInventoryCategory(HOME_INVERTER_BATTERY_TYPE, { bustCache });
     return mapInventoryFromServer(Array.isArray(rows) ? rows : []);
   }, [apiOnline]);
 
-  const loadAutomotiveTabRows = useCallback(async () => {
+  const loadAutomotiveTabRows = useCallback(async (bustCache = false) => {
     if (!apiOnline || !typeFilter) return [];
     if (!api.inventoryCategoryPath(typeFilter)) return [];
-    const rows = await api.listInventoryCategory(typeFilter);
+    const rows = await api.listInventoryCategory(typeFilter, { bustCache });
     return mapInventoryFromServer(Array.isArray(rows) ? rows : []);
   }, [apiOnline, typeFilter]);
+
+  const applyCategoryRowsToView = useCallback(
+    (categoryRows, fullInventory) => {
+      const rows = Array.isArray(categoryRows) ? categoryRows : [];
+      const mapped = mapInventoryFromServer(rows);
+      if (isHomeInvBatTab) {
+        setHomeTabRows(mapped);
+      } else if (isAutomotiveTab) {
+        setAutomotiveTabRows(mapped);
+      } else {
+        setInventory((prev) =>
+          mergeCategoryRowsIntoInventory(prev, rows, (row) =>
+            inventoryRowMatchesCategory(mapInventoryFromServer([row])[0], category),
+          ),
+        );
+      }
+      if (Array.isArray(fullInventory) && fullInventory.length) {
+        setInventory(mapInventoryFromServer(fullInventory));
+      } else if ((isAutomotiveTab || isHomeInvBatTab) && rows.length) {
+        setInventory((prev) =>
+          mergeCategoryRowsIntoInventory(prev, rows, (row) =>
+            inventoryRowMatchesCategory(mapInventoryFromServer([row])[0], category),
+          ),
+        );
+      }
+      setListRevision((n) => n + 1);
+    },
+    [category, isAutomotiveTab, isHomeInvBatTab, setInventory],
+  );
+
+  const refetchActiveTabRows = useCallback(
+    async ({ bustCache = false, keepExistingOnEmpty = false } = {}) => {
+      if (!apiOnline) return [];
+      if (isHomeInvBatTab) {
+        const rows = await loadHomeTabRows(bustCache);
+        setHomeTabRows((prev) => (keepExistingOnEmpty && rows.length === 0 && prev.length > 0 ? prev : rows));
+        setListRevision((n) => n + 1);
+        return rows.length > 0 ? rows : keepExistingOnEmpty ? homeTabRows : rows;
+      }
+      if (isAutomotiveTab) {
+        const rows = await loadAutomotiveTabRows(bustCache);
+        setAutomotiveTabRows((prev) => (keepExistingOnEmpty && rows.length === 0 && prev.length > 0 ? prev : rows));
+        setListRevision((n) => n + 1);
+        return rows.length > 0 ? rows : keepExistingOnEmpty ? automotiveTabRows : rows;
+      }
+      const all = mapInventoryFromServer(await api.inventory.list());
+      let nextAll = all;
+      setInventory((prev) => {
+        if (keepExistingOnEmpty && all.length === 0 && prev.length > 0) {
+          nextAll = prev;
+          return prev;
+        }
+        return all;
+      });
+      setListRevision((n) => n + 1);
+      return nextAll.filter((i) => inventoryRowMatchesCategory(i, category));
+    },
+    [apiOnline, category, isAutomotiveTab, isHomeInvBatTab, loadAutomotiveTabRows, loadHomeTabRows, setInventory, automotiveTabRows, homeTabRows],
+  );
 
   useEffect(() => {
     if (!apiOnline || !isHomeInvBatTab) return;
@@ -1187,6 +1361,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
   // the tab refresh (root cause of "requires manual refresh" / pending requests).
   const fetchInventory = useCallback(async () => {
     if (!apiOnline) return;
+    if (isVehicleRecommendTab) return;
     if (isHomeInvBatTab) {
       console.log("[inventory] API called: GET /home-inv-battery (refetch)");
       const rows = await loadHomeTabRows();
@@ -1205,16 +1380,24 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
     const all = mapInventoryFromServer(await api.inventory.list());
     setInventory(all);
     console.log("[inventory] API completed + state updated: inventory rows =", all.length);
-  }, [apiOnline, isAutomotiveTab, isHomeInvBatTab, loadAutomotiveTabRows, loadHomeTabRows, setInventory, typeFilter]);
+  }, [apiOnline, isAutomotiveTab, isHomeInvBatTab, isVehicleRecommendTab, loadAutomotiveTabRows, loadHomeTabRows, setInventory, typeFilter]);
 
   const handleDeleteRow = async (item) => {
     const deleteId = resolveInventoryUpdateId(item, item?._id);
+    const key = inventoryRowIdKey(item);
     try {
       if (apiOnline && deleteId) {
         // Remove from view immediately, then confirm with the server + a single refetch.
         setInventory((inv) => removeInventoryRow(inv, item));
         if (isHomeInvBatTab) setHomeTabRows((rows) => rows.filter((r) => !inventoryRowsMatch(r, item)));
         if (isAutomotiveTab) setAutomotiveTabRows((rows) => rows.filter((r) => !inventoryRowsMatch(r, item)));
+        if (key) {
+          setSelectedKeys((prev) => {
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+          });
+        }
         console.log("[inventory] state updated (optimistic delete):", deleteId);
         console.log("[inventory] API called: DELETE /inventory/" + deleteId);
         await api.inventory.remove(deleteId);
@@ -1229,6 +1412,13 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
         if (isAutomotiveTab) {
           setAutomotiveTabRows((rows) => rows.filter((r) => !inventoryRowsMatch(r, item)));
         }
+        if (key) {
+          setSelectedKeys((prev) => {
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+          });
+        }
       }
     } catch (e) {
       setUploadMsg(e.message || "Delete failed");
@@ -1241,54 +1431,135 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
     }
   };
 
-  const handleExcel = async (file) => {
-    if (!file) return;
-    setUploading(true);
-    setUploadMsg("");
+  const completeImport = async (res, rowCountBefore) => {
+    const merged = res.merged ?? {};
+    const inserted = merged.inserted ?? 0;
+    const updated = merged.updated ?? 0;
+    const skipped = merged.skipped ?? 0;
+    const parsed = res.parsedRowCount ?? res.imported ?? 0;
+    const savedCount = inserted + updated;
+
+    let refetchedRows = [];
     try {
-      if (!apiOnline) {
+      refetchedRows = await refetchActiveTabRows({ bustCache: true, keepExistingOnEmpty: true });
+    } catch (refetchErr) {
+      console.warn("[inventory] post-upload refetch failed:", refetchErr.message);
+      if (Array.isArray(res.categoryRows) && res.categoryRows.length) {
+        applyCategoryRowsToView(res.categoryRows, res.inventory);
+      }
+    }
+
+    const sourceAfterUpload =
+      refetchedRows.length > 0
+        ? refetchedRows
+        : Array.isArray(res.categoryRows) && res.categoryRows.length
+          ? mapInventoryFromServer(res.categoryRows)
+          : [];
+
+    const uploadBrands = Array.isArray(res.uploadedBrands) ? res.uploadedBrands : [];
+    // Stay on the brand chip used for upload; only fall back to All when chip was All / Other.
+    let brandToShow = brandFilter;
+    if (!brandFilter || brandFilter === "All") {
+      brandToShow = "All";
+    } else if (brandFilter === "Other") {
+      brandToShow = pickBrandFilterShowingRows(category, sourceAfterUpload, "Other") || "Other";
+    } else {
+      brandToShow = brandFilter;
+    }
+    setBrandFilter(brandToShow);
+    if (search.trim()) setSearch("");
+
+    const dbHint =
+      res.mongoDatabase && res.mongoCollection
+        ? ` Saved in ${res.mongoDatabase}.${res.mongoCollection}.`
+        : "";
+    const countHint =
+      res.productCountBefore != null && res.productCount != null
+        ? ` Branch SKUs: ${res.productCountBefore} → ${res.productCount}.`
+        : "";
+    const warnHint = res.warnings?.length ? ` (${res.warnings.length} sheet warnings)` : "";
+    const failedHint = res.failedRows?.length ? ` ${res.failedRows.length} row(s) failed validation.` : "";
+    const visibleNow = sourceAfterUpload.filter((r) =>
+      inventoryRowMatchesBrandSubcategory(r, category, brandToShow),
+    ).length;
+
+    if (savedCount > 0 || (res.categoryRowCount ?? 0) > 0) {
+      const brandLabel =
+        brandToShow === "All" ? "All brands" : automotiveBrandDisplayLabel(category, brandToShow);
+      setUploadMsg(
+        `Successfully imported ${parsed} record(s): ${inserted} new, ${updated} updated${skipped ? `, ${skipped} skipped` : ""}${failedHint}. ${visibleNow} visible under ${brandLabel}.${countHint}${dbHint}${warnHint}`,
+      );
+    } else if (parsed > 0) {
+      setUploadMsg(
+        `Parsed ${parsed} row(s) but none were saved. Check model / brand columns and try again.${dbHint}`,
+      );
+    } else {
+      setUploadMsg(`No valid rows found in the Excel file.${dbHint}`);
+    }
+  };
+
+  const handleExcel = async (file) => {
+    if (!file || uploading) return;
+    if (pauseAutoSync) pauseAutoSync.current = true;
+    setUploading(true);
+    setUploadMsg("Uploading…");
+    const rowCountBefore = isHomeInvBatTab
+      ? homeTabRows.length
+      : isAutomotiveTab
+        ? automotiveTabRows.length
+        : inventory.filter((i) => inventoryRowMatchesCategory(i, category)).length;
+    try {
+      const online = await isApiAvailable();
+      setApiOnline(online);
+      if (!online) {
         setUploadMsg("API offline — start the server (npm run dev) to save Excel to MongoDB.");
         return;
       }
-      const res = await api.uploadInventoryCategory(typeFilter, file);
-      const mappedCategory = Array.isArray(res.categoryRows) ? mapInventoryFromServer(res.categoryRows) : [];
-      const uploadBrands = Array.isArray(res.uploadedBrands) ? res.uploadedBrands : [];
-      const nextBrand = uploadBrands.length ? brandFilterAfterCategoryUpload(category, uploadBrands) : null;
-      if (mappedCategory.length) {
-        if (isHomeInvBatTab) {
-          setHomeTabRows(mappedCategory);
-        } else if (isAutomotiveTab) {
-          setAutomotiveTabRows(mappedCategory);
-        } else {
-          setInventory((prev) =>
-            mergeCategoryRowsIntoInventory(prev, res.categoryRows, (row) =>
-              inventoryRowMatchesCategory(mapInventoryFromServer([row])[0], category),
-            ),
-          );
-        }
-        if (nextBrand) setBrandFilter(nextBrand);
+      if (!typeFilter) {
+        setUploadMsg("Pick a product tab (Car Battery, Bike, Inverter, etc.) before uploading Excel.");
+        return;
       }
-      await fetchInventory();
-      const dbHint =
-        res.mongoDatabase && res.mongoCollection
-          ? ` In Atlas open database "${res.mongoDatabase}" → collection "${res.mongoCollection}".`
-          : "";
-      const rowCount = res.categoryRowCount ?? res.imported ?? 0;
-      const merged = res.merged ?? {};
-      const inserted = merged.inserted ?? 0;
-      const updated = merged.updated ?? 0;
-      const countHint =
-        res.productCountBefore != null && res.productCountAfter != null
-          ? ` Branch total SKUs: ${res.productCountBefore} → ${res.productCountAfter}.`
-          : "";
-      setUploadMsg(
-        rowCount > 0
-          ? `Merged ${res.imported} Excel row(s): ${inserted} new SKU(s) added, ${updated} existing updated (qty/pricing). Previous inventory kept.${countHint}${dbHint}${res.warnings?.length ? ` (${res.warnings.length} sheet warnings)` : ""}${nextBrand === "Other" ? ` Rows with missing Brand are under the ${automotiveBrandDisplayLabel(category, "Other")} chip.` : ""}`
-          : `Parsed ${res.parsedRowCount ?? res.imported} row(s) but none were saved. Check model / brand columns and try again.${dbHint}`,
-      );
+      if (
+        isAutomotiveTab &&
+        (!brandFilter || brandFilter === "All")
+      ) {
+        setUploadMsg("Select a brand chip (Exide, Amaron, …) before uploading — upload is brand-wise, not under All.");
+        return;
+      }
+      const uploadBrandChip =
+        isAutomotiveTab && brandFilter && brandFilter !== "Other" && brandFilter !== "All"
+          ? brandFilter
+          : undefined;
+      let res;
+      try {
+        res = await api.uploadInventoryCategory(typeFilter, file, { defaultBrand: uploadBrandChip });
+      } catch (uploadErr) {
+        const transient = /failed to fetch|network error|econnreset|upload request failed/i.test(
+          uploadErr.message || "",
+        );
+        if (transient) {
+          await new Promise((r) => setTimeout(r, 2500));
+          const recovered = await refetchActiveTabRows({ bustCache: true, keepExistingOnEmpty: true });
+          if (recovered.length > rowCountBefore) {
+            const brandToShow =
+              brandFilter && brandFilter !== "All"
+                ? brandFilter
+                : pickBrandFilterShowingRows(category, recovered, brandFilter);
+            if (brandToShow) setBrandFilter(brandToShow);
+            if (search.trim()) setSearch("");
+            setUploadMsg(
+              `Upload connection dropped, but ${recovered.length - rowCountBefore} new row(s) appear in the list (refreshed from server).`,
+            );
+            return;
+          }
+        }
+        throw uploadErr;
+      }
+      await completeImport(res, rowCountBefore);
     } catch (e) {
       setUploadMsg(e.message || "Upload failed");
     } finally {
+      if (pauseAutoSync) pauseAutoSync.current = false;
       setUploading(false);
     }
   };
@@ -1350,9 +1621,16 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
       return;
     }
     setBrandFilter((prev) => {
-      if (prev && category.brands.includes(prev)) return prev;
-      if (prev === "Other") return prev;
-      const firstWithStock = brandCounts.find((b) => b.count > 0 && !b.isOther);
+      if (prev === "All") return prev;
+      if (prev === "Other") {
+        const otherCount = brandCounts.find((b) => b.brand === "Other")?.count ?? 0;
+        if (otherCount > 0) return prev;
+      }
+      if (prev && category.brands.includes(prev)) {
+        const prevCount = brandCounts.find((b) => b.brand === prev)?.count ?? 0;
+        if (prevCount > 0) return prev;
+      }
+      const firstWithStock = brandCounts.find((b) => b.count > 0);
       return firstWithStock?.brand ?? category.brands[0];
     });
   }, [categoryId, category.brands, brandCounts]);
@@ -1362,10 +1640,126 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
     return sortInventoryForDisplay(filtered);
   }, [categoryScopedRows, category, brandFilter]);
 
+  useEffect(() => {
+    setSelectedKeys(new Set());
+  }, [categoryId, brandFilter]);
+
+  const inventorySelectKey = (item) => {
+    const k = inventoryRowIdKey(item);
+    if (k) return k;
+    return `fb:${String(item?.brand ?? "").trim().toLowerCase()}|${String(item?.model ?? item?.modelName ?? "").trim().toLowerCase()}`;
+  };
+
+  const visibleSelectKeys = useMemo(
+    () => rowsForTable.map(inventorySelectKey).filter(Boolean),
+    [rowsForTable],
+  );
+
+  const allVisibleSelected =
+    visibleSelectKeys.length > 0 && visibleSelectKeys.every((k) => selectedKeys.has(k));
+  const selectedCount = visibleSelectKeys.filter((k) => selectedKeys.has(k)).length;
+
+  const toggleRowSelected = (item) => {
+    const k = inventorySelectKey(item);
+    if (!k) return;
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleSelectKeys.forEach((k) => next.delete(k));
+      else visibleSelectKeys.forEach((k) => next.add(k));
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const items = rowsForTable.filter((r) => selectedKeys.has(inventorySelectKey(r)));
+    if (!items.length) return;
+    if (!window.confirm(`Delete ${items.length} selected product(s)? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    setUploadMsg(`Deleting ${items.length} product(s)…`);
+    try {
+      setInventory((inv) => items.reduce((acc, item) => removeInventoryRow(acc, item), inv));
+      if (isHomeInvBatTab) {
+        setHomeTabRows((rows) => rows.filter((r) => !items.some((it) => inventoryRowsMatch(r, it))));
+      }
+      if (isAutomotiveTab) {
+        setAutomotiveTabRows((rows) => rows.filter((r) => !items.some((it) => inventoryRowsMatch(r, it))));
+      }
+      setSelectedKeys(new Set());
+
+      if (apiOnline) {
+        let ok = 0;
+        let failed = 0;
+        for (const item of items) {
+          const deleteId = resolveInventoryUpdateId(item, item?._id);
+          if (!deleteId) {
+            failed += 1;
+            continue;
+          }
+          try {
+            await api.inventory.remove(deleteId);
+            ok += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+        await fetchInventory();
+        setUploadMsg(
+          failed
+            ? `Deleted ${ok} product(s); ${failed} failed.`
+            : `Deleted ${ok} selected product(s).`,
+        );
+      } else {
+        setUploadMsg(`Removed ${items.length} product(s) locally (API offline).`);
+      }
+    } catch (e) {
+      setUploadMsg(e.message || "Bulk delete failed");
+      try {
+        await fetchInventory();
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const selectAllCheckbox = (
+    <input
+      type="checkbox"
+      checked={allVisibleSelected}
+      disabled={!visibleSelectKeys.length || bulkDeleting}
+      onChange={toggleSelectAllVisible}
+      title={allVisibleSelected ? "Clear selection" : "Select all visible"}
+      aria-label="Select all visible products"
+    />
+  );
+
+  const rowCheckbox = (item) => {
+    const k = inventorySelectKey(item);
+    return (
+      <input
+        type="checkbox"
+        checked={selectedKeys.has(k)}
+        disabled={bulkDeleting}
+        onChange={() => toggleRowSelected(item)}
+        aria-label={`Select ${item.model || item.modelName || "product"}`}
+      />
+    );
+  };
+
   const handleCategoryChange = (nextId) => {
     setCategoryId(nextId);
     const next = getInventoryCategory(nextId);
-    setBrandFilter(next.brands?.[0] ?? "");
+    setBrandFilter(next.brands?.[0] ?? "All");
   };
 
   const handleSave = async (item) => {
@@ -1490,16 +1884,31 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
   };
 
   return (
-    <div>
+    <div className="inv-page">
       <div className="page-header">
         <div>
           <div className="page-title">Inventory</div>
           <div className="page-sub">
             {category.label}
-            {brandFilter ? ` · ${automotiveBrandDisplayLabel(category, brandFilter)}` : ""} · {rowsForTable.length} shown · your branch only
+            {brandFilter && brandFilter !== "All" ? ` · ${automotiveBrandDisplayLabel(category, brandFilter)}` : brandFilter === "All" ? " · All brands" : ""}
+            {category.brands?.length
+              ? ` · ${rowsForTable.length} shown (${categoryScopedRows.length} in tab)`
+              : ` · ${rowsForTable.length} shown`}
+            {" · your branch only"}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div>
+          {isVehicleRecommendTab ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleCategoryChange("car-battery")}
+              title="Excel upload is on Car Battery, Bike, Inverter, and other product tabs"
+            >
+              <i className="ti ti-upload"></i> Upload Excel (product tabs)
+            </button>
+          ) : (
+            <>
           <input
             ref={fileRef}
             type="file"
@@ -1507,7 +1916,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             style={{ display: "none" }}
             onChange={(e) => {
               const f = e.target.files?.[0];
-              handleExcel(f);
+              if (f) handleExcel(f);
               e.target.value = "";
             }}
           />
@@ -1518,22 +1927,42 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             style={{ display: "none" }}
             onChange={onComboImageFile}
           />
-          <button className="btn btn-secondary" onClick={() => fileRef.current?.click()} disabled={uploading}>
+          <button className="btn btn-secondary" onClick={() => fileRef.current?.click()} disabled={uploading || bulkDeleting}>
             <i className="ti ti-upload"></i> {uploading ? "Uploading..." : "Upload Excel"}
           </button>
-          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+          {selectedCount > 0 && (
+            <button
+              className="btn btn-danger"
+              type="button"
+              disabled={bulkDeleting || uploading}
+              onClick={handleBulkDelete}
+              title="Delete all selected products"
+              style={{ marginLeft: 8 }}
+            >
+              <i className="ti ti-trash"></i>{" "}
+              {bulkDeleting ? "Deleting…" : `Delete selected (${selectedCount})`}
+            </button>
+          )}
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowAdd(true)}
+            disabled={uploading || bulkDeleting}
+            style={{ marginLeft: 8 }}
+          >
             <i className="ti ti-plus"></i>{" "}
             {isComboIvBat ? "Add combo SKU" : isInvOnlyTab ? "Add Inverter" : isTrolleyTab ? "Add Trolley" : isLithiumIonTab ? "Add Lithium Ion Battery" : isHomeInvBatTab ? "Add Home Inv Battery" : "Add Battery"}
           </button>
+            </>
+          )}
         </div>
       </div>
 
-      {apiOnline && (
+      {apiOnline && !isVehicleRecommendTab && (
         <GlobalInventorySearch
           userBranchId={user?.branchId}
           userBranchName={user?.branchName}
           syncSearchType={category.searchType}
-          syncBrand={category.brands?.length ? brandFilter : ""}
+          syncBrand={category.brands?.length && brandFilter && brandFilter !== "All" ? brandFilter : ""}
           onRequestTransfer={async (payload) => {
             try {
               await api.stockTransfers.create({
@@ -1554,7 +1983,19 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
         />
       )}
 
-      {uploadMsg && <div style={{ marginBottom: 12, fontSize: 16, color: uploadMsg.includes("Added") ? "#059669" : "#dc2626" }}>{uploadMsg}</div>}
+      {uploadMsg && (
+        <div
+          style={{
+            marginBottom: 12,
+            fontSize: 16,
+            color: /Successfully imported|Merged|Added|saved|updated/i.test(uploadMsg) && !/failed|none were saved|No valid rows/i.test(uploadMsg)
+              ? "#059669"
+              : "#dc2626",
+          }}
+        >
+          {uploadMsg}
+        </div>
+      )}
 
       <InventoryCategoryNav
         categoryId={categoryId}
@@ -1564,9 +2005,29 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
         onBrandChange={setBrandFilter}
       />
 
+      {isVehicleRecommendTab ? (
+        <>
+        <div
+          className="card"
+          style={{
+            marginBottom: 16,
+            padding: "12px 16px",
+            borderLeft: "4px solid #f59e0b",
+            background: "#fffbeb",
+            fontSize: 15,
+            color: "#92400e",
+          }}
+        >
+          <strong>Battery Recommendation</strong> looks up fitment from the vehicle catalog — it does not import Excel here.
+          Use <strong>Car Battery</strong>, <strong>Bike Battery</strong>, <strong>Inverter</strong>, or other product tabs for <strong>Upload Excel</strong>.
+        </div>
+        <VehicleBatteryRecommend apiOnline={apiOnline} />
+        </>
+      ) : (
+      <>
       <div className="filter-row">
-        <div className="search-bar" style={{ flex: 1 }}>
-          <i className="ti ti-search"></i>
+        <div className="search-bar">
+          <i className="ti ti-search" aria-hidden style={{ flexShrink: 0, color: "#9ca3af" }}></i>
           <input
             placeholder={
               isComboIvBat
@@ -1601,7 +2062,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
         >
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Inverter inventory</div>
           <div style={{ fontSize: 15, lineHeight: 1.5 }}>
-            The table lists inverter SKUs with ERP pricing columns <strong>DP</strong>, <strong>CD</strong>, and <strong>MRP</strong>, plus <strong>Qty</strong> stock on hand.
+            The table lists inverter SKUs with ERP pricing columns <strong>DP</strong>, <strong>CD</strong>, and <strong>MRP</strong>, plus <strong>Selling Price</strong> and <strong>P&amp;L</strong>, and <strong>Qty</strong> stock on hand.
           </div>
         </div>
       )}
@@ -1686,12 +2147,13 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
         </div>
       )}
 
-      <div className="card inv-table-card">
+      <div className="card inv-table-card" key={`inv-table-${categoryId}-${brandFilter}-${listRevision}`}>
         <div className="table-wrap">
           {isComboIvBat ? (
-            <table>
+            <table className="inv-wide">
               <thead>
                 <tr>
+                  <th style={{ width: 36 }}>{selectAllCheckbox}</th>
                   {COMBO_INVENTORY_TABLE_COLUMNS.map((col) => (
                     <th key={col.key} style={{ fontSize: 13, whiteSpace: "nowrap" }}>
                       {col.label}
@@ -1719,6 +2181,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                   const capTitle = String(item.productCapacity || "").trim() || formatComboVaAhLine(item);
                   return (
                     <tr key={`inv-${String(item.id ?? "x")}-${item.model}-${item.comboId || ""}`}>
+                      <td style={{ textAlign: "center" }}>{rowCheckbox(item)}</td>
                       {COMBO_INVENTORY_TABLE_COLUMNS.map((col) => (
                         <td
                           key={col.key}
@@ -1815,9 +2278,15 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             </table>
           ) : isHomeInvBatTab ? (
             <div className="table-wrap" style={{ maxHeight: "72vh", overflow: "auto" }}>
-            <table style={{ minWidth: 1280 }}>
+            <table className="inv-wide" style={{ minWidth: 1280 }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 3, background: "#fff", boxShadow: "0 1px 0 #e5e7eb" }}>
                 <tr>
+                  <th
+                    rowSpan={2}
+                    style={{ width: 36, verticalAlign: "bottom", background: "#fff", padding: "6px 8px" }}
+                  >
+                    {selectAllCheckbox}
+                  </th>
                   {HOME_INVERTER_BATTERY_TABLE_GROUPS.map((g) => (
                     <th
                       key={g.id}
@@ -1864,13 +2333,13 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
               <tbody>
                 {homeTabLoading ? (
                   <tr>
-                    <td colSpan={HOME_INVERTER_BATTERY_TABLE_COLUMNS.length + 1} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
+                    <td colSpan={HOME_INVERTER_BATTERY_TABLE_COLUMNS.length + 2} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
                       Loading battery inventory…
                     </td>
                   </tr>
                 ) : rowsForTable.length === 0 ? (
                   <tr>
-                    <td colSpan={HOME_INVERTER_BATTERY_TABLE_COLUMNS.length + 1} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
+                    <td colSpan={HOME_INVERTER_BATTERY_TABLE_COLUMNS.length + 2} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
                       No battery rows yet. Upload your Excel on this tab, or check that your account branch matches the MongoDB branchId on saved rows.
                     </td>
                   </tr>
@@ -1879,6 +2348,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                   const serial = inventoryDisplaySerial(index);
                   return (
                   <tr key={`inv-${String(item.id ?? "x")}-${item.model}-${item.batteryModel || ""}`}>
+                    <td style={{ textAlign: "center" }}>{rowCheckbox(item)}</td>
                     {HOME_INVERTER_BATTERY_TABLE_COLUMNS.map((col) => (
                       <td key={col.key} style={homeInvBatCellStyle(col)}>
                         {formatHomeInvBatTableCell(col, item, serial)}
@@ -1914,9 +2384,15 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             </div>
           ) : isInvOnlyTab ? (
             <div className="table-wrap" style={{ maxHeight: "72vh", overflow: "auto" }}>
-            <table style={{ minWidth: 1200 }}>
+            <table className="inv-wide" style={{ minWidth: 1200 }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 3, background: "#fff", boxShadow: "0 1px 0 #e5e7eb" }}>
                 <tr>
+                  <th
+                    rowSpan={2}
+                    style={{ width: 36, verticalAlign: "bottom", background: "#fff", padding: "6px 8px" }}
+                  >
+                    {selectAllCheckbox}
+                  </th>
                   {INVERTER_INVENTORY_TABLE_GROUPS.map((g) => (
                     <th
                       key={g.id}
@@ -1927,7 +2403,15 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                         letterSpacing: "0.04em",
                         color: "#64748b",
                         background:
-                          g.id === "pricing" ? "#f1f5f9" : g.id === "market" ? "#ecfdf5" : g.id === "stock" ? "#fef9c3" : "#fff",
+                          g.id === "pricing"
+                            ? "#f1f5f9"
+                            : g.id === "selling"
+                              ? "#fffbeb"
+                              : g.id === "market"
+                                ? "#ecfdf5"
+                                : g.id === "stock"
+                                  ? "#fef9c3"
+                                  : "#fff",
                         borderBottom: "1px solid #e5e7eb",
                         padding: "6px 8px",
                       }}
@@ -1953,11 +2437,13 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                         background:
                           col.group === "pricing"
                             ? "#f8fafc"
-                            : col.group === "market"
-                              ? "#f0fdf4"
-                              : col.group === "stock"
-                                ? "#fefce8"
-                                : "#fff",
+                            : col.group === "selling"
+                              ? "#fffbeb"
+                              : col.group === "market"
+                                ? "#f0fdf4"
+                                : col.group === "stock"
+                                  ? "#fefce8"
+                                  : "#fff",
                       }}
                     >
                       {col.label}
@@ -1970,6 +2456,7 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                   const serial = inventoryDisplaySerial(index);
                   return (
                     <tr key={`inv-${String(item.id ?? "x")}-${item.model}`}>
+                      <td style={{ textAlign: "center" }}>{rowCheckbox(item)}</td>
                       {INVERTER_INVENTORY_TABLE_COLUMNS.map((col) => (
                         <td key={col.key} style={inverterCellStyle(col)}>
                           {formatInverterTableCell(col, item, serial)}
@@ -2005,9 +2492,15 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             </div>
           ) : isTrolleyTab ? (
             <div className="table-wrap" style={{ maxHeight: "72vh", overflow: "auto" }}>
-            <table style={{ minWidth: 1180 }}>
+            <table className="inv-wide" style={{ minWidth: 1180 }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 3, background: "#fff", boxShadow: "0 1px 0 #e5e7eb" }}>
                 <tr>
+                  <th
+                    rowSpan={2}
+                    style={{ width: 36, verticalAlign: "bottom", background: "#fff", padding: "6px 8px" }}
+                  >
+                    {selectAllCheckbox}
+                  </th>
                   {TROLLEY_INVENTORY_TABLE_GROUPS.map((g) => (
                     <th
                       key={g.id}
@@ -2052,13 +2545,14 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
               <tbody>
                 {rowsForTable.length === 0 ? (
                   <tr>
-                    <td colSpan={TROLLEY_INVENTORY_TABLE_COLUMNS.length + 1} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
+                    <td colSpan={TROLLEY_INVENTORY_TABLE_COLUMNS.length + 2} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
                       No Luminous trolley rows yet. Upload your trolley Excel on this tab.
                     </td>
                   </tr>
                 ) : null}
                 {rowsForTable.map((item, index) => (
                   <tr key={`inv-${String(item.id ?? "x")}-${item.model}`}>
+                    <td style={{ textAlign: "center" }}>{rowCheckbox(item)}</td>
                     {TROLLEY_INVENTORY_TABLE_COLUMNS.map((col) => (
                       <td
                         key={col.key}
@@ -2100,9 +2594,15 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             </div>
           ) : isLithiumIonTab ? (
             <div className="table-wrap" style={{ maxHeight: "72vh", overflow: "auto" }}>
-            <table style={{ minWidth: 1680 }}>
+            <table className="inv-wide" style={{ minWidth: 1680 }}>
               <thead style={{ position: "sticky", top: 0, zIndex: 3, background: "#fff", boxShadow: "0 1px 0 #e5e7eb" }}>
                 <tr>
+                  <th
+                    rowSpan={2}
+                    style={{ width: 36, verticalAlign: "bottom", background: "#fff", padding: "6px 8px" }}
+                  >
+                    {selectAllCheckbox}
+                  </th>
                   {LITHIUM_ION_BATTERY_TABLE_GROUPS.map((g) => (
                     <th
                       key={g.id}
@@ -2147,13 +2647,14 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
               <tbody>
                 {rowsForTable.length === 0 ? (
                   <tr>
-                    <td colSpan={LITHIUM_ION_BATTERY_TABLE_COLUMNS.length + 1} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
+                    <td colSpan={LITHIUM_ION_BATTERY_TABLE_COLUMNS.length + 2} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
                       No lithium ion battery rows yet. Upload your Excel on this tab or click Add Lithium Ion Battery.
                     </td>
                   </tr>
                 ) : null}
                 {rowsForTable.map((item, index) => (
                   <tr key={`inv-${String(item.id ?? "x")}-${item.model}`}>
+                    <td style={{ textAlign: "center" }}>{rowCheckbox(item)}</td>
                     {LITHIUM_ION_BATTERY_TABLE_COLUMNS.map((col) => (
                       <td
                         key={col.key}
@@ -2190,11 +2691,30 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
             </table>
             </div>
           ) : (
-            <table>
+            <table className="inv-fit">
+              <colgroup>
+                <col style={{ width: "3%" }} />
+                <col style={{ width: "4%" }} />
+                <col style={{ width: isAutomotiveTab ? "11%" : "12%" }} />
+                <col style={{ width: isAutomotiveTab ? "9%" : "10%" }} />
+                <col style={{ width: "6%" }} />
+                <col style={{ width: "5%" }} />
+                <col style={{ width: "6.5%" }} />
+                <col style={{ width: "7%" }} />
+                {isAutomotiveTab ? <col style={{ width: "5.5%" }} /> : null}
+                <col style={{ width: "6.5%" }} />
+                <col style={{ width: "6%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "4%" }} />
+                <col style={{ width: isAutomotiveTab ? "8.5%" : "10%" }} />
+                <col style={{ width: "7%" }} />
+              </colgroup>
               <thead>
                 <tr>
+                  <th rowSpan={2}>{selectAllCheckbox}</th>
                   <th rowSpan={2}>Sr.No.</th>
-                  <th rowSpan={2}>Model Number</th>
+                  <th rowSpan={2} className="th-left">Model Number</th>
                   <th rowSpan={2}>Product Capacity</th>
                   <th rowSpan={2}>TYPE</th>
                   <th rowSpan={2}>Weight</th>
@@ -2203,17 +2723,34 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                   {isAutomotiveTab ? <th rowSpan={2}>CD</th> : null}
                   <th rowSpan={2}>MRP</th>
                   <th rowSpan={2}>Warranty</th>
-                  <th colSpan={2}>NEW RATE</th>
+                  <th colSpan={2} className="nr-span">NEW RATE</th>
                   <th rowSpan={2}>Qty</th>
                   <th rowSpan={2}>P&amp;L</th>
                   <th rowSpan={2}>Actions</th>
                 </tr>
                 <tr>
-                  <th>WITH OB</th>
-                  <th>W/O B</th>
+                  <th className="nr-sub">WITH OB</th>
+                  <th className="nr-sub">W/O B</th>
                 </tr>
               </thead>
               <tbody>
+                {automotiveTabLoading ? (
+                  <tr>
+                    <td colSpan={isAutomotiveTab ? 16 : 15} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
+                      Loading inventory…
+                    </td>
+                  </tr>
+                ) : rowsForTable.length === 0 ? (
+                  <tr>
+                    <td colSpan={isAutomotiveTab ? 16 : 15} style={{ textAlign: "center", padding: 24, color: "#64748b" }}>
+                      {categoryScopedRows.length > 0 && brandFilter
+                        ? `No rows under “${automotiveBrandDisplayLabel(category, brandFilter)}”. Try another brand chip above (e.g. Other), or clear the search box.`
+                        : search.trim()
+                          ? "No rows match your search. Clear the search box to see all items."
+                          : "No rows yet. Click Upload Excel above, or check that your user branch matches MongoDB branchId on saved rows."}
+                    </td>
+                  </tr>
+                ) : null}
                 {rowsForTable.map((item, rowIdx) => {
                   const dp = item.dpPlusGst != null && item.dpPlusGst !== "" ? Number(item.dpPlusGst) : Number(item.purchaseRate ?? item.dp ?? 0);
                   const cd = Number(item.cd ?? item.cdPrice ?? 0);
@@ -2227,22 +2764,23 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                   const cap = item.productCapacity || (item.ah ? `${item.ah}Ah` : "—");
                   return (
                     <tr key={`inv-${String(item.id ?? "x")}-${item.model}`}>
-                      <td style={{ color: "#6b7280", fontSize: 15 }}>{sr}</td>
-                      <td style={{ fontWeight: 500, color: "#111827" }}>{item.model}</td>
-                      <td style={{ fontSize: 14, color: "#475569", maxWidth: 180 }} title={cap}>
+                      <td style={{ textAlign: "center" }}>{rowCheckbox(item)}</td>
+                      <td style={{ color: "#6b7280" }}>{sr}</td>
+                      <td className="td-left" style={{ fontWeight: 500, color: "#111827" }}>{item.model}</td>
+                      <td style={{ color: "#475569" }} title={cap}>
                         {cap}
                       </td>
                       <td>
                         <span className="badge badge-blue">{item.type}</span>
                       </td>
-                      <td style={{ color: "#6b7280", fontSize: 15 }}>{item.weight != null && item.weight !== "" ? item.weight : "—"}</td>
+                      <td style={{ color: "#6b7280" }}>{item.weight != null && item.weight !== "" ? item.weight : "—"}</td>
                       <td style={{ color: "#6b7280" }}>₹{Number(item.scrapRate || 0).toLocaleString()}</td>
                       <td style={{ color: "#6b7280" }}>₹{buyForPl.toLocaleString()}</td>
                       {isAutomotiveTab ? (
                         <td style={{ color: "#6b7280" }}>{cd > 0 ? `₹${cd.toLocaleString()}` : "—"}</td>
                       ) : null}
                       <td style={{ color: "#374151", fontWeight: 500 }}>₹{Number(item.mrp || 0).toLocaleString()}</td>
-                      <td style={{ color: "#6b7280", fontSize: 15 }}>{String(item.warranty || "").trim() || "—"}</td>
+                      <td style={{ color: "#6b7280" }}>{String(item.warranty || "").trim() || "—"}</td>
                       <td style={{ color: "#0f766e", fontWeight: 600 }}>₹{ob.toLocaleString()}</td>
                       <td style={{ color: "#0369a1", fontWeight: 500 }}>₹{wo.toLocaleString()}</td>
                       <td>
@@ -2251,12 +2789,12 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
                         </span>
                       </td>
                       <td>
-                        <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`} style={{ padding: "3px 8px", fontSize: 14, display: "inline-block" }}>
+                        <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`}>
                           {profit >= 0 ? "+" : ""}₹{profit.toLocaleString()} ({pct}%)
                         </div>
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: 4 }}>
+                        <div className="actions-cell">
                           <button className="btn btn-sm btn-secondary" type="button" onClick={() => setEditItem(item)} title="Edit">
                             <i className="ti ti-edit"></i>
                           </button>
@@ -2285,6 +2823,8 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
           )}
         </div>
       </div>
+      </>
+      )}
 
       {(showAdd || editItem) && (
         <InventoryModal
@@ -2308,6 +2848,46 @@ function Inventory({ inventory, setInventory, apiOnline, modal, setModal, user }
           onClose={() => setShowComparison(null)}
         />
       )}
+    </div>
+  );
+}
+
+function InventoryStockHistoryPanel({ mongoId }) {
+  const [rows, setRows] = useState([]);
+  useEffect(() => {
+    if (!mongoId) return;
+    api.stockHistory(mongoId).then(setRows).catch(() => setRows([]));
+  }, [mongoId]);
+  if (!rows.length) return null;
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div className="section-title">Stock history</div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Type</th>
+              <th>Prev</th>
+              <th>Change</th>
+              <th>New</th>
+              <th>Invoice</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r._id}>
+                <td>{r.createdAt ? new Date(r.createdAt).toLocaleString() : "—"}</td>
+                <td>{r.type}</td>
+                <td>{r.previousStock}</td>
+                <td>{r.quantityChange > 0 ? `+${r.quantityChange}` : r.quantityChange}</td>
+                <td>{r.newStock}</td>
+                <td>{r.invoiceNumber || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -2339,11 +2919,12 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
   const woNum = Number(form.newRateWithoutOB) || 0;
   const mrpFinalNum = Number(form.mrpFinal) || Number(form.mrp) || 0;
   const priceNum = Number(form.price) || Number(form.mrp) || 0;
+  const sellRateNum = Number(form.sellRate) || Number(form.newRateWithOB) || 0;
   const purchaseForPl = isTrolleyForm || isHomeInvBatForm || isInverterForm || isLithiumIonForm ? dpNum : dpNum;
   const sellForPl = isTrolleyForm
     ? priceNum
     : isInverterForm
-      ? mrpFinalNum
+      ? sellRateNum || mrpFinalNum
       : isHomeInvBatForm || isLithiumIonForm
         ? obNum || woNum || mrpFinalNum
         : obNum || mrpFinalNum;
@@ -2377,8 +2958,9 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
       return;
     }
     const mrpFinalN = Number(form.mrpFinal) || Number(form.mrp) || 0;
+    const sellInv = Number(form.sellRate) || Number(form.newRateWithOB) || 0;
     const mrpN = isInverterForm ? mrpFinalN : mrpFinalN;
-    const ob = isInverterForm ? mrpN : Number(form.newRateWithOB) || 0;
+    const ob = isInverterForm ? sellInv || mrpN : Number(form.newRateWithOB) || 0;
     const wo = isInverterForm ? 0 : Number(form.newRateWithoutOB) || 0;
     const invP = Number(form.inverterPrice) || 0;
     const batP = Number(form.batteryPrice) || 0;
@@ -2386,7 +2968,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
     const sell = isTrolleyForm
       ? Number(form.price) || Number(form.mrp) || 0
       : isInverterForm
-        ? mrpN
+        ? sellInv || mrpN
         : isHomeInvBatForm || isLithiumIonForm
           ? ob || wo || mrpFinalN
           : ob || mrpFinalN;
@@ -2450,13 +3032,13 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
       dpPrice: dp,
       cd,
       cdPrice: cd,
-      price: isTrolleyForm ? sell : undefined,
+      price: isTrolleyForm || isInverterForm ? sell : undefined,
+      sellRate: sell,
       mrpFinal: mrpFinalN,
       mrp: isTrolleyForm ? sell : mrpFinalN,
       newRateWithOB: isInverterForm ? sell : ob,
       newRateWithoutOB: wo,
       purchaseRate: purchase,
-      sellRate: sell,
       quantity: Number(form.quantity) || 0,
       voltage: isLithiumIonForm ? Number(form.voltage) || 0 : undefined,
       ah: isInverterForm || isTrolleyForm ? 0 : ahVal,
@@ -2572,37 +3154,14 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
                 </div>
               </div>
               <p style={{ fontSize: 15, color: "#64748b", marginBottom: 8 }}>
-                <strong>Quotation PDF images</strong> — paste HTTPS URLs, or use row actions <strong>I / B / L</strong> on the Inv + Battery table to upload to Cloudinary.
+                <strong>Product images (B/F frames)</strong> — battery, inverter, and brand photos used on quotations. Upload does not affect purchase-bill OCR.
               </p>
-              <div className="grid-3">
-                <div className="form-group">
-                  <label className="form-label">Inverter image URL</label>
-                  <input
-                    className="form-input"
-                    value={form.inverterImage}
-                    onChange={(e) => set("inverterImage", e.target.value)}
-                    placeholder="https://res.cloudinary.com/…"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Battery image URL</label>
-                  <input
-                    className="form-input"
-                    value={form.batteryImage}
-                    onChange={(e) => set("batteryImage", e.target.value)}
-                    placeholder="https://res.cloudinary.com/…"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Brand logo URL</label>
-                  <input
-                    className="form-input"
-                    value={form.brandLogo}
-                    onChange={(e) => set("brandLogo", e.target.value)}
-                    placeholder="https://…"
-                  />
-                </div>
-              </div>
+              <ProductImageFrames
+                mongoId={editingMongoId}
+                type={form.type}
+                values={{ inverterImage: form.inverterImage, batteryImage: form.batteryImage, brandLogo: form.brandLogo }}
+                onChange={(field, url) => set(field, url)}
+              />
               <div className="grid-2">
                 <div className="form-group">
                   <label className="form-label">Inverter price (₹)</label>
@@ -2932,10 +3491,21 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
                   <input className="form-input" type="number" value={form.cd} onChange={(e) => set("cd", e.target.value)} placeholder="Cash price" />
                 </div>
               </div>
-              <div className="grid-2">
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#475569", margin: "12px 0 8px" }}>Selling</div>
+              <div className="grid-3">
                 <div className="form-group">
                   <label className="form-label">MRP (₹)</label>
-                  <input className="form-input" type="number" value={form.mrp} onChange={(e) => set("mrp", e.target.value)} placeholder="Final customer price" />
+                  <input className="form-input" type="number" value={form.mrp} onChange={(e) => set("mrp", e.target.value)} placeholder="Max retail price" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Selling Price (₹)</label>
+                  <input
+                    className="form-input"
+                    type="number"
+                    value={form.sellRate}
+                    onChange={(e) => set("sellRate", e.target.value)}
+                    placeholder="Your shop selling rate"
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Quantity (stock units)</label>
@@ -2945,7 +3515,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
               {purchaseForPl > 0 && sellForPl > 0 && (
                 <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`} style={{ marginBottom: 16 }}>
                   <i className={`ti ${profit >= 0 ? "ti-trending-up" : "ti-trending-down"}`} style={{ marginRight: 6 }}></i>
-                  Margin (MRP vs DP):{" "}
+                  Margin (Selling Price vs DP):{" "}
                   {profit >= 0 ? "You are gaining" : "You are at a loss of"} ₹{Math.abs(profit).toLocaleString()} per unit ({Math.abs(pct)}%{" "}
                   {profit >= 0 ? "profit" : "loss"}) · Total stock {profit >= 0 ? "profit" : "loss"}: ₹
                   {Math.abs(profit * (Number(form.quantity) || 0)).toLocaleString()}
@@ -3061,7 +3631,17 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
               <div className="grid-2">
                 <div className="form-group">
                   <label className="form-label">Brand</label>
-                  <input className="form-input" value={form.brand} onChange={e => set("brand", e.target.value)} placeholder="Amaron, Exide…" />
+                  {isAutomotiveBatteryForm ? (
+                    <select className="form-select" value={form.brand} onChange={(e) => set("brand", e.target.value)}>
+                      <option value="Exide">Exide</option>
+                      <option value="Amaron">Amaron</option>
+                      {form.brand && form.brand !== "Exide" && form.brand !== "Amaron" ? (
+                        <option value={form.brand}>{form.brand}</option>
+                      ) : null}
+                    </select>
+                  ) : (
+                    <input className="form-input" value={form.brand} onChange={e => set("brand", e.target.value)} placeholder="Amaron, Exide…" />
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Warranty</label>
@@ -3085,6 +3665,26 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
             </>
           ) : null}
         </div>
+        {editingMongoId ? (
+          <div style={{ padding: "0 20px 8px" }}>
+            {!isComboForm && (
+              <>
+                <div className="section-title">Product images (B/F frames)</div>
+                <ProductImageFrames
+                  mongoId={editingMongoId}
+                  type={form.type}
+                  values={{ inverterImage: form.inverterImage, batteryImage: form.batteryImage, brandLogo: form.brandLogo }}
+                  onChange={(field, url) => set(field, url)}
+                />
+              </>
+            )}
+            <InventoryStockHistoryPanel mongoId={editingMongoId} />
+          </div>
+        ) : (
+          <div style={{ padding: "0 20px 8px", fontSize: 13, color: "#64748b" }}>
+            After you add this SKU, open Edit to upload battery / inverter / brand images.
+          </div>
+        )}
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={handleSaveClick} disabled={submitting}>
@@ -3260,6 +3860,7 @@ function QuotationsPage({
   const [statusFilter, setStatusFilter] = useState("All");
   const [showNew, setShowNew] = useState(false);
   const [newQuoteKind, setNewQuoteKind] = useState("combo");
+  const [quotePrefill, setQuotePrefill] = useState(null);
   const [viewSheet, setViewSheet] = useState(null);
   const [editQt, setEditQt] = useState(null);
   const [invoiceConvert, setInvoiceConvert] = useState(null);
@@ -3287,9 +3888,20 @@ function QuotationsPage({
   }, [refreshFinals]);
 
   useEffect(() => {
-    const q = new URLSearchParams(location.search).get("create");
+    const params = new URLSearchParams(location.search);
+    const q = params.get("create");
     if (!q || !QUOTATION_KINDS.includes(q)) return;
     setNewQuoteKind(q);
+    setQuotePrefill({
+      vehicleBrand: params.get("vehicleBrand") || "",
+      vehicleModel: params.get("vehicleModel") || "",
+      fuelType: params.get("fuelType") || "",
+      variant: params.get("variant") || "",
+      fitmentGroup: params.get("fitmentGroup") || "",
+      productId: params.get("productId") || "",
+      bikeBrand: params.get("bikeBrand") || params.get("vehicleBrand") || "",
+      bikeModel: params.get("bikeModel") || params.get("vehicleModel") || "",
+    });
     setShowNew(true);
     navigate("/shop/quotations", { replace: true });
   }, [location.search, navigate]);
@@ -3738,13 +4350,15 @@ function QuotationsPage({
 
       {showNew && (
         <SmartQuotationModal
-          key={newQuoteKind}
+          key={`${newQuoteKind}-${quotePrefill?.productId || ""}`}
           initialQuotationKind={newQuoteKind}
+          initialPrefill={quotePrefill}
           inventory={inventory}
           userBranchId={userBranchId}
           userBranchName={userBranchName}
           onClose={() => {
             setShowNew(false);
+            setQuotePrefill(null);
             refreshFinals();
           }}
           onQuotationCreated={handleQuotationCreated}

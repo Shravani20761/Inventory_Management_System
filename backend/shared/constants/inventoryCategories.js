@@ -8,6 +8,9 @@ import {
   shouldShowOnLithiumIonBatteryTab,
 } from "./inventoryTypes.js";
 
+/** Car & bike battery brand tabs in inventory. */
+export const AUTOMOTIVE_BATTERY_BRANDS = ["Exide", "Amaron"];
+
 /** ERP inventory categories → brand sub-sections (same MongoDB collections, filtered in UI). */
 export const INVENTORY_CATEGORIES = [
   {
@@ -15,7 +18,7 @@ export const INVENTORY_CATEGORIES = [
     label: "Car Battery",
     uploadType: "Car",
     searchType: "car-battery",
-    brands: ["Exide", "Amaron"],
+    brands: AUTOMOTIVE_BATTERY_BRANDS,
     tableKind: "automotive-car",
   },
   {
@@ -23,7 +26,7 @@ export const INVENTORY_CATEGORIES = [
     label: "Bike Battery",
     uploadType: "Bike",
     searchType: "bike-battery",
-    brands: ["Exide", "Amaron"],
+    brands: AUTOMOTIVE_BATTERY_BRANDS,
     tableKind: "automotive-bike",
   },
   {
@@ -84,7 +87,7 @@ export function inventoryBrandMatches(rowBrand, filterBrand) {
   return normalizeInventoryBrand(rowBrand) === normalizeInventoryBrand(filterBrand);
 }
 
-/** Car/Bike tabs only: swap chip labels Exide ↔ Other (inventory brand values unchanged). */
+/** Car/Bike tabs — brand sub-section chips. */
 export function isAutomotiveInventoryCategory(category) {
   const kind = category?.tableKind;
   return kind === "automotive-car" || kind === "automotive-bike";
@@ -99,10 +102,10 @@ export function canonicalAutomotiveBrand(rawBrand) {
   return String(rawBrand ?? "").trim();
 }
 
+/** Car/Bike tabs: show actual brand chip labels (Exide, Amaron, Other). */
 export function automotiveBrandDisplayLabel(category, brandFilter, { isOther = false } = {}) {
   if (!isAutomotiveInventoryCategory(category)) return brandFilter;
-  if (isOther || brandFilter === "Other") return "Exide";
-  if (brandFilter === "Exide") return "Other";
+  if (isOther || brandFilter === "Other") return "Other";
   return brandFilter;
 }
 
@@ -163,4 +166,19 @@ export function inventoryRowMatchesBrandSubcategory(row, category, brandFilter) 
     return !category.brands.some((b) => inventoryBrandMatches(rb, b));
   }
   return inventoryBrandMatches(rb, brandFilter);
+}
+
+/** Apply the selected Exide/Amaron chip brand to automotive Excel rows missing a known brand. */
+export function applyAutomotiveUploadBrand(rows, defaultBrand) {
+  if (!defaultBrand || !Array.isArray(rows)) return rows;
+  const chip = canonicalAutomotiveBrand(defaultBrand) || String(defaultBrand).trim();
+  if (!chip || !AUTOMOTIVE_BATTERY_BRANDS.some((b) => inventoryBrandMatches(chip, b))) return rows;
+  return rows.map((row) => {
+    const raw = String(row.brand ?? "").trim();
+    const empty = !raw || normalizeInventoryBrand(raw) === "unknown";
+    const canon = empty ? "" : canonicalAutomotiveBrand(raw);
+    const known = canon && AUTOMOTIVE_BATTERY_BRANDS.some((b) => inventoryBrandMatches(canon, b));
+    if (known) return { ...row, brand: canon };
+    return { ...row, brand: chip };
+  });
 }

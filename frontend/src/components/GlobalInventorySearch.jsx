@@ -8,7 +8,7 @@ import {
 
 function AvailabilityRow({ label, available, quantity }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, padding: "4px 0", gap: 12 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, padding: "4px 0", gap: 12 }}>
       <span>{label}</span>
       <span style={{ fontWeight: 600, color: available ? "#059669" : "#dc2626", whiteSpace: "nowrap" }}>
         {available ? `Available (Qty: ${quantity})` : "Out of stock"}
@@ -22,7 +22,7 @@ function TypeBadge({ typeId }) {
   return (
     <span
       style={{
-        fontSize: 13,
+        fontSize: 12,
         fontWeight: 700,
         textTransform: "uppercase",
         letterSpacing: "0.04em",
@@ -119,26 +119,25 @@ export function GlobalInventorySearch({
   };
 
   return (
-    <div className="card" style={{ marginBottom: compact ? 12 : 16 }}>
-      <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <span>{compact ? "Find stock at other branches" : "Branch inventory search"}</span>
-        {userBranchName && (
-          <span style={{ fontSize: 14, color: "#2563eb", background: "#eff6ff", padding: "3px 10px", borderRadius: 999 }}>
-            Your branch: {userBranchName}
-          </span>
-        )}
+    <div className="card gis-card" style={{ marginBottom: compact ? 12 : 16 }}>
+      <div className="gis-head">
+        <div className="section-title" style={{ marginBottom: 0 }}>
+          {compact ? "Find stock at other branches" : "Branch inventory search"}
+        </div>
+        {userBranchName && <span className="gis-badge">Your branch: {userBranchName}</span>}
       </div>
-      <p style={{ fontSize: 15, color: "#6b7280", marginBottom: 12 }}>
+      <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12, lineHeight: 1.45 }}>
         Select inventory type, fill the matching fields, then search live across branches. Other branch stock is never preloaded.
       </p>
 
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ fontSize: 15, fontWeight: 600, display: "block", marginBottom: 6 }}>Inventory type</label>
+      <div style={{ marginBottom: 12, maxWidth: compact ? "100%" : 280 }}>
+        <label className="form-label" style={{ textTransform: "none", letterSpacing: 0, fontSize: 13 }}>
+          Inventory type
+        </label>
         <select
           className="form-input"
           value={inventoryType}
           onChange={(e) => onTypeChange(e.target.value)}
-          style={{ maxWidth: compact ? "100%" : 280 }}
         >
           {INVENTORY_SEARCH_TYPES.map((t) => (
             <option key={t.id} value={t.id}>
@@ -149,16 +148,10 @@ export function GlobalInventorySearch({
       </div>
 
       <form onSubmit={search}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: compact ? "1fr 1fr" : "repeat(auto-fill, minmax(160px, 1fr))",
-            gap: 10,
-          }}
-        >
+        <div className="gis-grid" style={compact ? { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" } : undefined}>
           {visibleFields.map((field) => (
-            <div key={field.key}>
-              <label style={{ fontSize: 14, color: "#6b7280", display: "block", marginBottom: 4 }}>{field.label}</label>
+            <div key={field.key} className="gis-field">
+              <label>{field.label}</label>
               {field.type === "select" ? (
                 <select
                   className="form-input"
@@ -183,15 +176,17 @@ export function GlobalInventorySearch({
             </div>
           ))}
         </div>
-        <button type="submit" className="btn btn-primary btn-sm" style={{ marginTop: 12 }} disabled={loading}>
-          {loading ? "Searching…" : `Search ${inventoryTypeLabel(inventoryType)}`}
-        </button>
+        <div className="gis-actions">
+          <button type="submit" className="btn btn-primary" disabled={loading}>
+            {loading ? "Searching…" : `Search ${inventoryTypeLabel(inventoryType)}`}
+          </button>
+        </div>
       </form>
 
       {error && <div className="profit-alert loss" style={{ marginTop: 12 }}>{error}</div>}
 
       {results && !results.results?.length && (
-        <div style={{ marginTop: 12, fontSize: 16, color: "#6b7280" }}>
+        <div style={{ marginTop: 12, fontSize: 14, color: "#6b7280" }}>
           {results.message || "No matching products found at any branch."}
         </div>
       )}

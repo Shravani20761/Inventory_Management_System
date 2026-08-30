@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "./api/client.js";
 import { mapRecommendationRow } from "./utils/recommendationRows.js";
 import { QUOTATION_KIND_LABELS } from "./constants/quotationKinds.js";
@@ -432,16 +432,21 @@ export function SmartQuotationModal({
   onSaved,
   onQuotationCreated,
   initialQuotationKind = "combo",
+  initialPrefill = null,
   userBranchId,
   userBranchName,
 }) {
+  const prefill = initialPrefill || {};
+  const vehicleNote = [prefill.vehicleBrand, prefill.vehicleModel, prefill.variant, prefill.fuelType, prefill.fitmentGroup]
+    .filter(Boolean)
+    .join(" · ");
   const [form, setForm] = useState({
     quotationKind: initialQuotationKind,
     recommendationMode: RECOMMENDATION_MODE_DYNAMIC,
     customerName: "",
     customerPhone: "",
     customerAddress: "",
-    customerRequirements: "",
+    customerRequirements: vehicleNote ? `Vehicle fitment: ${vehicleNote}` : "",
     flatType: "2BHK",
     numberOfRooms: "",
     backupHours: 5,
@@ -461,11 +466,14 @@ export function SmartQuotationModal({
     deliveryRequired: false,
     totalLoad: "",
     appliances: [],
-    vehicleBrand: "",
-    vehicleModel: "",
-    fuelType: "Petrol",
-    bikeBrand: "",
-    bikeModel: "",
+    vehicleBrand: prefill.vehicleBrand || "",
+    vehicleModel: prefill.vehicleModel || "",
+    fuelType: prefill.fuelType || "Petrol",
+    bikeBrand: prefill.bikeBrand || "",
+    bikeModel: prefill.bikeModel || "",
+    vehicleVariant: prefill.variant || "",
+    fitmentGroup: prefill.fitmentGroup || "",
+    selectedProductId: prefill.productId || "",
   });
   const [extraItems, setExtraItems] = useState([]);
   const [addItemId, setAddItemId] = useState("");
@@ -482,6 +490,33 @@ export function SmartQuotationModal({
   const [pdfPreview, setPdfPreview] = useState(null);
 
   const inStock = inventory.filter((b) => Number(b.quantity) > 0);
+
+  useEffect(() => {
+    const pid = prefill.productId;
+    if (!pid) return;
+    const item = inventory.find(
+      (b) => String(b.id) === String(pid) || String(b._id) === String(pid),
+    );
+    if (!item) return;
+    const rate = Number(item.sellRate ?? item.sellingRate ?? 0);
+    setExtraItems([
+      {
+        inventoryId: item.id,
+        productId: pid,
+        model: item.model ?? item.modelName,
+        modelName: item.modelName ?? item.model,
+        brand: item.brand,
+        type: item.type ?? item.category,
+        qty: 1,
+        rate,
+        sellingRate: rate,
+        vehicle: prefill.vehicleBrand,
+        vehicleVariant: prefill.variant,
+        fuelType: prefill.fuelType,
+        fitmentGroup: prefill.fitmentGroup,
+      },
+    ]);
+  }, [inventory, prefill.productId, prefill.vehicleBrand, prefill.variant, prefill.fuelType, prefill.fitmentGroup]);
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -557,6 +592,9 @@ export function SmartQuotationModal({
     vehicleBrand: form.vehicleBrand.trim(),
     vehicleModel: form.vehicleModel.trim(),
     fuelType: form.fuelType,
+    vehicleVariant: form.vehicleVariant,
+    fitmentGroup: form.fitmentGroup,
+    productId: form.selectedProductId,
     bikeBrand: form.bikeBrand.trim(),
     bikeModel: form.bikeModel.trim(),
     batteryExchangeMode: form.batteryExchangeMode,

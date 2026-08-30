@@ -57,6 +57,20 @@ export const INVERTER_COLUMN_MAP_ORDERED = [
       "final price",
     ],
   },
+  {
+    key: "sellRate",
+    aliases: [
+      "selling price",
+      "sell price",
+      "sell rate",
+      "selling rate",
+      "shop price",
+      "retail selling price",
+      "dealer selling price",
+      "new rate with ob",
+      "with ob",
+    ],
+  },
   { key: "amazonPrice", aliases: ["amazon price", "amazon"] },
   { key: "flipkartPrice", aliases: ["flipkart price", "flipkart"] },
   { key: "batteryBhaiPrice", aliases: ["batterybhai price", "battery bhai", "batterybhai"] },
@@ -67,6 +81,7 @@ export const INVERTER_COLUMN_MAP_ORDERED = [
 export const INVERTER_INVENTORY_TABLE_GROUPS = [
   { id: "details", label: "Inverter Details", span: 5 },
   { id: "pricing", label: "Pricing", span: 3 },
+  { id: "selling", label: "Selling", span: 2 },
   { id: "stock", label: "Stock", span: 1 },
 ];
 
@@ -79,5 +94,7 @@ export const INVERTER_INVENTORY_TABLE_COLUMNS = [
   { key: "dp", label: "DP", format: "rupee", group: "pricing", align: "center" },
   { key: "cd", label: "CD", format: "rupee", group: "pricing", align: "center" },
   { key: "mrp", label: "MRP", format: "rupee", group: "pricing", align: "center" },
+  { key: "sellRate", label: "Selling Price", format: "rupee", group: "selling", align: "center" },
+  { key: "pl", label: "P&L", group: "selling", align: "center" },
   { key: "quantity", label: "Qty", format: "num", group: "stock", align: "center" },
 ];

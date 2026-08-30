@@ -31,6 +31,9 @@ const lithiumIonBatterySchema = new mongoose.Schema(
     supplier: { type: String, default: "", trim: true },
     invoiceNo: { type: String, default: "", trim: true },
     notes: { type: String, default: "", trim: true },
+    batteryImage: { type: String, default: "" },
+    inverterImage: { type: String, default: "" },
+    brandLogo: { type: String, default: "" },
   },
   { timestamps: true, collection: "lithium_ion_batteries" },
 );

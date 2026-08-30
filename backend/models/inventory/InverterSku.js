@@ -16,6 +16,11 @@ const inverterSkuSchema = new mongoose.Schema(
     supplier: { type: String, default: "" },
     invoiceNo: { type: String, default: "" },
     notes: { type: String, default: "" },
+    batteryImage: { type: String, default: "" },
+    inverterImage: { type: String, default: "" },
+    brandLogo: { type: String, default: "" },
+    image: { type: String, default: "" },
+    brandDefaultImage: { type: String, default: "" },
   },
   { timestamps: true, collection: "inverters" },
 );

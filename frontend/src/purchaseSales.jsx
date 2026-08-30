@@ -2,6 +2,7 @@ import { useState } from "react";
 import { INVENTORY_FORM_TYPES } from "./constants/inventoryTypes.js";
 import { nextNumericInventoryId } from "./utils/inventoryIds.js";
 import { PurchaseManagement } from "./pages/PurchaseManagement.jsx";
+import { PurchaseBillsModule } from "./pages/PurchaseBills.jsx";
 
 const genId = (prefix) => `${prefix}-${Date.now().toString().slice(-6)}`;
 
@@ -66,6 +67,9 @@ export function PurchaseAndSales({ purchases, setPurchases, sales, setSales, inv
         <div className={`tab ${tab === "purchases" ? "active" : ""}`} onClick={() => setTab("purchases")}>
           Purchase Management
         </div>
+        <div className={`tab ${tab === "bills" ? "active" : ""}`} onClick={() => setTab("bills")}>
+          Purchase Bills
+        </div>
         <div className={`tab ${tab === "sales" ? "active" : ""}`} onClick={() => setTab("sales")}>
           Sell Records
         </div>
@@ -73,6 +77,13 @@ export function PurchaseAndSales({ purchases, setPurchases, sales, setSales, inv
 
       {tab === "purchases" ? (
         <PurchaseManagement
+          inventory={inventory}
+          apiOnline={apiOnline}
+          user={user}
+          onInventoryRefresh={onInventoryRefresh}
+        />
+      ) : tab === "bills" ? (
+        <PurchaseBillsModule
           inventory={inventory}
           apiOnline={apiOnline}
           user={user}

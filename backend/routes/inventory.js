@@ -1,5 +1,6 @@
 import { Router } from "express";
 import mongoose from "mongoose";
+import multer from "multer";
 import {
   listProducts,
   getProductById,
@@ -25,8 +26,16 @@ import {
   searchComboController,
   searchTrolleyController,
 } from "../controllers/inventorySearchController.js";
+import { uploadInventoryProductImage } from "../services/cloudinaryService.js";
+import InventoryStockHistory from "../models/InventoryStockHistory.js";
+import {
+  PRODUCT_IMAGE_FIELDS,
+  imageFieldSetPayload,
+} from "../shared/productImageFields.js";
+import { findInventoryDocById } from "../services/categoryInventoryService.js";
 
 const router = Router();
+const imageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 
 function tenant(req) {
   return {
@@ -150,6 +159,57 @@ router.post("/battery-inventory", async (req, res, next) => {
  * Registered AFTER the literal GET routes (/, /stats, /search/*) so it never shadows them.
  * Always sends exactly one response on every path (doc, 404, or error via next()).
  */
+router.get("/:id/stock-history", async (req, res, next) => {
+  try {
+    const found = await findInventoryDocById(req.params.id, tenant(req));
+    if (!found) return res.status(404).json({ error: "Not found" });
+    const rows = await InventoryStockHistory.find({ productId: found.lean._id })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/:id/upload-image", imageUpload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file?.buffer) return res.status(400).json({ error: "No file uploaded" });
+    const imageField = String(req.body.imageField ?? "batteryImage").trim();
+    if (!PRODUCT_IMAGE_FIELDS.includes(imageField)) {
+      return res.status(400).json({ error: "imageField must be batteryImage, inverterImage, or brandLogo" });
+    }
+    const found = await findInventoryDocById(req.params.id, tenant(req));
+    if (!found) return res.status(404).json({ error: "Inventory row not found" });
+    const pid = `sku-${found.lean._id}-${imageField}`.replace(/[^a-zA-Z0-9_-]/g, "");
+    const url = await uploadInventoryProductImage(req.file.buffer, req.file.mimetype, {
+      publicId: pid,
+      folder: "batterymela/inventory/sku-images",
+    });
+    const set = imageFieldSetPayload(imageField, url);
+    await found.Model.updateOne({ _id: found.lean._id }, { $set: set });
+    res.json({ ok: true, url, imageField, id: String(found.lean._id) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/:id/images/:field", async (req, res, next) => {
+  try {
+    const imageField = String(req.params.field || "").trim();
+    if (!PRODUCT_IMAGE_FIELDS.includes(imageField)) {
+      return res.status(400).json({ error: "Invalid image field" });
+    }
+    const found = await findInventoryDocById(req.params.id, tenant(req));
+    if (!found) return res.status(404).json({ error: "Inventory row not found" });
+    await found.Model.updateOne({ _id: found.lean._id }, { $set: imageFieldSetPayload(imageField, "") });
+    res.json({ ok: true, url: "", imageField, id: String(found.lean._id) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get("/:id", async (req, res, next) => {
   try {
     console.log("[GET /inventory/:id] called", req.params.id);

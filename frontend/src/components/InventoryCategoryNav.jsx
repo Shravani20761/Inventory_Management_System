@@ -9,7 +9,7 @@ export function InventoryCategoryNav({ categoryId, brandFilter, onCategoryChange
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: showBrands ? 12 : 0 }}>
+      <div className="inv-category-tabs" style={{ marginBottom: showBrands ? 12 : 0 }}>
         {INVENTORY_CATEGORIES.map((cat) => (
           <button
             key={cat.id}
@@ -24,54 +24,34 @@ export function InventoryCategoryNav({ categoryId, brandFilter, onCategoryChange
       </div>
 
       {showBrands && (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 8,
-            padding: "10px 12px",
-            background: "#f9fafb",
-            borderRadius: 10,
-            border: "1px solid #e5e7eb",
-          }}
-        >
-          <span style={{ fontSize: 14, fontWeight: 600, color: "#6b7280", alignSelf: "center", marginRight: 4 }}>
+        <div className="inv-brand-row">
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#6b7280", alignSelf: "center", marginRight: 4 }}>
             {category.label} ·
           </span>
+          <button
+            type="button"
+            className={`inv-brand-chip${!brandFilter || brandFilter === "All" ? " active" : ""}`}
+            onClick={() => onBrandChange("All")}
+          >
+            All
+            <span className="count">({brandCounts.reduce((s, b) => s + (b.count ?? 0), 0)})</span>
+          </button>
           {brandCounts.map(({ brand, count, isOther }) => (
             <button
               key={brand}
               type="button"
+              className={`inv-brand-chip${brandFilter === brand ? " active" : ""}`}
               onClick={() => onBrandChange(brand)}
-              style={{
-                border: brandFilter === brand ? "2px solid #2563eb" : "1px solid #d1d5db",
-                background: brandFilter === brand ? "#eff6ff" : "#fff",
-                color: brandFilter === brand ? "#1d4ed8" : "#374151",
-                borderRadius: 999,
-                padding: "6px 14px",
-                fontSize: 15,
-                fontWeight: brandFilter === brand ? 700 : 500,
-                cursor: "pointer",
-              }}
             >
               {automotiveBrandDisplayLabel(category, brand, { isOther })}
-              <span
-                style={{
-                  marginLeft: 6,
-                  fontSize: 14,
-                  color: brandFilter === brand ? "#1d4ed8" : "#6b7280",
-                  fontWeight: 600,
-                }}
-              >
-                ({count})
-              </span>
+              <span className="count">({count})</span>
             </button>
           ))}
         </div>
       )}
 
       {category.id === "combo" && (
-        <div style={{ fontSize: 15, color: "#6b7280", marginTop: 8 }}>
+        <div style={{ fontSize: 13, color: "#6b7280", marginTop: 8 }}>
           Combo inventory is unified — no brand sub-sections (dynamic pairing in quotations).
         </div>
       )}

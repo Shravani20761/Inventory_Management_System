@@ -1,20 +1,37 @@
 import { Router } from "express";
 import multer from "multer";
 import mongoose from "mongoose";
-import { parseInventoryExcelBuffer } from "../utils/inventoryExcelFromBuffer.js";
+import { parseInventoryExcelBuffer, analyzeInventoryExcelUpload, validateImportColumnMapping } from "../utils/inventoryExcelFromBuffer.js";
 import { resolveTenantBranchId, countProductsInBranch } from "../services/inventoryService.js";
 import {
   CATEGORY,
   listCategory,
   mergeCategoryRowsFromParsed,
-  listAllCategoriesAsLegacyProducts,
   categoryMeta,
   createCategoryInventoryRow,
 } from "../services/categoryInventoryService.js";
+import { applyAutomotiveUploadBrand } from "../shared/constants/inventoryCategories.js";
 import InvBatteryCombo from "../models/inventory/InvBatteryCombo.js";
 import { uploadInventoryProductImage } from "../services/cloudinaryService.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+function parseJsonField(raw, fallback = {}) {
+  if (raw == null || raw === "") return fallback;
+  if (typeof raw === "object") return raw;
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return fallback;
+  }
+}
+
+function parseUploadMapping(req) {
+  return {
+    columnMappingByIndex: parseJsonField(req.body?.columnMapping ?? req.body?.columnMappingByIndex),
+    duplicateSelections: parseJsonField(req.body?.duplicateSelections),
+  };
+}
 
 function tenant(req) {
   return { branchId: req.user?.branchId || null, isSuperAdmin: req.user?.role === "superAdmin" };
@@ -56,6 +73,21 @@ function mountCategory(importTypeLabel, categoryKey) {
       next(e);
     }
   });
+  r.post("/upload/preview", upload.single("file"), async (req, res, next) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const userMapping = parseJsonField(req.body?.columnMapping ?? req.body?.columnMappingByIndex);
+      const analysis = await analyzeInventoryExcelUpload(req.file.buffer, importTypeLabel, {
+        columnMappingByIndex: userMapping,
+      });
+      if (!analysis.ok) {
+        return res.status(400).json({ error: analysis.errors?.[0] || "Preview failed", errors: analysis.errors });
+      }
+      res.json(analysis);
+    } catch (e) {
+      next(e);
+    }
+  });
   r.post("/upload", upload.single("file"), async (req, res, next) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
@@ -66,30 +98,50 @@ function mountCategory(importTypeLabel, categoryKey) {
             "No branch for this account. Assign branchId on the user or ensure a default Branch exists.",
         });
       }
-      const { batteries, errors, mappedColumns, parsedRowCount } = await parseInventoryExcelBuffer(req.file.buffer, {
-        importType: importTypeLabel,
-      });
+      const { columnMappingByIndex, duplicateSelections } = parseUploadMapping(req);
+      const hasExplicitMapping = columnMappingByIndex && Object.keys(columnMappingByIndex).length > 0;
+      if (hasExplicitMapping) {
+        const validation = validateImportColumnMapping(importTypeLabel, columnMappingByIndex, duplicateSelections);
+        if (!validation.ok) {
+          return res.status(400).json({
+            error: validation.errors[0] || "Invalid column mapping",
+            errors: validation.errors,
+            requiredFields: validation.requiredFields,
+          });
+        }
+      }
+      const { batteries, errors, mappedColumns, parsedRowCount, validationFailed } =
+        await parseInventoryExcelBuffer(req.file.buffer, {
+          importType: importTypeLabel,
+          columnMappingByIndex: hasExplicitMapping ? columnMappingByIndex : undefined,
+          duplicateSelections,
+        });
+      if (validationFailed) {
+        return res.status(400).json({ error: errors?.[0] || "Validation failed", errors });
+      }
       if (!batteries.length) {
         return res.status(400).json({ error: errors?.[0] || "No valid rows found", errors, mappedColumns });
       }
+      const defaultBrand = String(req.body?.defaultBrand ?? req.query?.defaultBrand ?? "").trim();
+      const importRows =
+        categoryKey === CATEGORY.CAR || categoryKey === CATEGORY.BIKE
+          ? applyAutomotiveUploadBrand(batteries, defaultBrand)
+          : batteries;
       const countBefore = await countProductsInBranch(branchId);
-      const mergeResult = await mergeCategoryRowsFromParsed(categoryKey, batteries, branchId, { quantityMode: "add" });
-      const categoryRows = mergeResult.rows;
-      const inventory = await listAllCategoriesAsLegacyProducts({
-        branchId,
-        isSuperAdmin,
-        includeProfit: true,
-      });
+      const mergeResult = await mergeCategoryRowsFromParsed(categoryKey, importRows, branchId, { quantityMode: "add" });
       const countAfter = await countProductsInBranch(branchId);
       const meta = categoryMeta(categoryKey);
+      const failedRows = (errors || []).filter((e) => /row \d+/i.test(String(e)));
+      /** Slim JSON — full categoryRows + aggregate inventory bloated responses and caused proxy ECONNRESET. */
       res.json({
         imported: batteries.length,
         parsedRowCount: parsedRowCount ?? batteries.length,
-        categoryRowCount: categoryRows.length,
+        categoryRowCount: mergeResult.rows?.length ?? 0,
         merged: {
           inserted: mergeResult.inserted ?? 0,
           updated: mergeResult.updated ?? 0,
           skipped: mergeResult.skipped ?? 0,
+          failed: failedRows.length,
         },
         productCount: countAfter,
         productCountBefore: countBefore,
@@ -97,16 +149,15 @@ function mountCategory(importTypeLabel, categoryKey) {
         mongoCollection: meta.collectionName,
         mongooseModel: meta.mongooseModel,
         category: categoryKey,
-        categoryRows,
-        inventory,
         uploadedBrands: [
           ...new Set(
-            batteries
+            importRows
               .map((b) => String(b.brand ?? "").trim())
               .filter(Boolean),
           ),
         ],
         warnings: errors,
+        failedRows,
         mappedColumns,
       });
     } catch (e) {

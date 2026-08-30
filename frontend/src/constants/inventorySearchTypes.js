@@ -49,7 +49,7 @@ export const SEARCH_FORM_CONFIG = {
         options: [{ value: "", label: "Select fuel" }, ...FUEL_TYPES.map((f) => ({ value: f, label: f }))],
       },
       { key: "capacity", label: "Battery AH", placeholder: "55", inputMode: "numeric" },
-      { key: "brand", label: "Battery brand (optional)", placeholder: "Amaron" },
+      { key: "brand", label: "Battery brand (optional)", placeholder: "Exide" },
       { key: "modelNumber", label: "Battery model (optional)", placeholder: "A555" },
     ],
   },

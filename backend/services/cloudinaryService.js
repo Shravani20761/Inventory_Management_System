@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import path from "path";
 import { v2 as cloudinary } from "cloudinary";
 
 function isConfigured() {
@@ -54,11 +55,6 @@ export async function uploadInvoicePdf(filePath, invoiceNumber) {
 }
 
 /**
- * Upload quotation PDF for Meta WhatsApp (must be public HTTPS).
- * Use when PUBLIC_BASE_URL is localhost or you want reliable Meta document delivery.
- * @returns {Promise<string>} secure public URL
- */
-/**
  * Upload a product / marketing image (JPEG/PNG/WebP) for inventory or branding.
  * @returns {Promise<string>} secure HTTPS URL
  */
@@ -89,6 +85,40 @@ export async function uploadInventoryProductImage(buffer, mimetype = "image/jpeg
   return result.secure_url;
 }
 
+/**
+ * Upload a purchase bill image or PDF. Falls back to local /generated when Cloudinary is unset.
+ * @returns {Promise<{ url: string, storage: string }>}
+ */
+export async function uploadPurchaseBillFile(buffer, mimetype = "application/pdf", { publicId } = {}) {
+  const mime = String(mimetype || "application/octet-stream");
+  const isPdf = mime.includes("pdf");
+  if (configure()) {
+    const safeId = String(publicId || `bill-${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, "");
+    const dataUri = `data:${mime};base64,${buffer.toString("base64")}`;
+    const result = await cloudinary.uploader.upload(dataUri, {
+      folder: "batterymela/purchase-bills",
+      public_id: safeId,
+      overwrite: true,
+      resource_type: isPdf ? "raw" : "image",
+    });
+    return { url: result.secure_url, storage: "cloudinary" };
+  }
+
+  const dir = path.join(process.cwd(), "generated", "purchase-bills");
+  await fs.mkdir(dir, { recursive: true });
+  const ext = isPdf ? "pdf" : mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+  const name = `${String(publicId || `bill-${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, "")}.${ext}`;
+  const filePath = path.join(dir, name);
+  await fs.writeFile(filePath, buffer);
+  const base = process.env.PUBLIC_BASE_URL || "";
+  const url = `${String(base).replace(/\/$/, "")}/generated/purchase-bills/${name}`;
+  return { url, storage: "local" };
+}
+
+/**
+ * Upload quotation PDF for Meta WhatsApp (must be public HTTPS).
+ * @returns {Promise<string>} secure public URL
+ */
 export async function uploadQuotationPdfForWhatsApp(filePath, quoteKey) {
   if (!configure()) {
     const err = new Error("Cloudinary not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET in .env");

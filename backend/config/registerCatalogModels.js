@@ -23,3 +23,8 @@ import "../models/RecommendationSheet.js";
 import "../models/Invoice.js";
 import "../models/VehicleCompatibility.js";
 import "../models/BatteryInventory.js";
+import "../models/vehicleFitment/VehicleType.js";
+import "../models/vehicleFitment/VehicleBrand.js";
+import "../models/vehicleFitment/VehicleModel.js";
+import "../models/vehicleFitment/VehicleVariant.js";
+import "../models/vehicleFitment/BatteryFitmentGroup.js";
