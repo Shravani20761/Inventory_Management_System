@@ -341,7 +341,7 @@ export default function App() {
         >
           <strong>
             {syncError.includes("Cannot reach") || syncError.includes("Failed to fetch")
-              ? "API unreachable — changes are not being saved."
+              ? "Cannot reach the API server."
               : syncError.includes("Session expired")
                 ? "Session expired."
                 : "Sync to MongoDB failed."}

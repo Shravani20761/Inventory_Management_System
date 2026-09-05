@@ -62,7 +62,7 @@ import { generateInvoiceController } from "./controllers/invoiceController.js";
 import { generateQuotationController, previewQuotationOptionsController } from "./controllers/quotationController.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { getWhatsAppConfigStatus, verifyMetaWebhook } from "./services/whatsappService.js";
-import { getCloudinaryConfigStatus } from "./services/cloudinaryService.js";
+import { getCloudinaryConfigStatus, verifyCloudinaryAuth } from "./services/cloudinaryService.js";
 import { startQuotationCleanupCron, GENERATED_DIR, publicBaseUrl } from "./services/quotationStorageService.js";
 import { startPurchaseReminderCron } from "./services/purchaseReminderService.js";
 import Battery from "./models/BatteryWriteTest.js";
@@ -259,6 +259,9 @@ const server = app.listen(PORT, "0.0.0.0", () => {
     console.warn("[cloudinary] Not configured — invoices need CLOUDINARY_* in .env");
   } else {
     console.log("[cloudinary] Ready for invoice uploads");
+    verifyCloudinaryAuth().catch((e) => {
+      console.warn("[cloudinary] Startup credential check skipped:", e.message);
+    });
   }
   if (/localhost|127\.0\.0\.1/i.test(publicBaseUrl())) {
     console.warn(

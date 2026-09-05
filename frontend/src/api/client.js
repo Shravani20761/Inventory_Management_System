@@ -157,21 +157,32 @@ async function request(path, options = {}) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    let msg = err.error || res.statusText || "Request failed";
-    // Express default 404 has empty body → statusText "Not Found"
+    let msg = err.message || err.error || res.statusText || "Request failed";
     if (res.status === 404 && (!err.error || err.error === "Not Found") && String(path).startsWith("/branches")) {
       msg =
         "Branch API route not found on the server (PATCH /api/branches/:id). Restart the backend (npm run dev) so the latest branches routes are loaded.";
     }
-    if (res.status === 502 || res.status === 503) {
+    const emptyGateway = (res.status === 502 || res.status === 503) && !err.error && !err.message;
+    if (emptyGateway) {
       throw new Error(
         isLocalApiTarget()
-          ? "API server not responding (Bad Gateway). Stop all terminals, then run: npm run dev — wait until the API is listening on port 3001."
-          : `API server not responding (Bad Gateway) at ${API_BASE}.`,
+          ? "Cannot reach the API server. Run: npm run dev (starts API on port 3001 + frontend). Wait until the API is listening on port 3001."
+          : `Cannot reach the API server at ${API_BASE}.`,
       );
+    }
+    if (res.status >= 500) {
+      const e = new Error(
+        /invalid signature|string to sign|api_secret/i.test(msg)
+          ? "Purchase bill processing failed. Please try again."
+          : msg,
+      );
+      e.body = err;
+      e.status = res.status;
+      throw e;
     }
     const e = new Error(msg, { cause: err });
     e.body = err;
+    e.status = res.status;
     if (err.details) e.details = err.details;
     else if (err.duplicate) e.details = err;
     throw e;
@@ -688,18 +699,36 @@ export const api = {
       const form = new FormData();
       form.append("file", file);
       if (branchId) form.append("branchId", String(branchId));
-      const res = await fetch(`${API_BASE}/purchase-bills/upload`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: form,
-      });
+      let res;
+      try {
+        res = await fetch(`${API_BASE}/purchase-bills/upload`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: form,
+        });
+      } catch (e) {
+        throw new Error(
+          isLocalApiTarget()
+            ? "Cannot reach the API server."
+            : `Cannot reach the API server at ${API_BASE}.`,
+          { cause: e },
+        );
+      }
       if (res.status === 401) {
         clearSession();
         window.dispatchEvent(new CustomEvent("auth:logout"));
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || "Upload failed");
+        const raw = err.message || err.error || "Upload failed";
+        if (res.status >= 500) {
+          throw new Error(
+            /invalid signature|string to sign|api_secret/i.test(raw)
+              ? "Purchase bill processing failed. Please try again."
+              : raw,
+          );
+        }
+        throw new Error(raw);
       }
       return res.json();
     },
@@ -707,14 +736,32 @@ export const api = {
       const form = new FormData();
       if (file) form.append("file", file);
       if (branchId) form.append("branchId", String(branchId));
-      const res = await fetch(`${API_BASE}/purchase-bills/${encodeURIComponent(id)}/retry-ocr`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: form,
-      });
+      let res;
+      try {
+        res = await fetch(`${API_BASE}/purchase-bills/${encodeURIComponent(id)}/retry-ocr`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: form,
+        });
+      } catch (e) {
+        throw new Error(
+          isLocalApiTarget()
+            ? "Cannot reach the API server."
+            : `Cannot reach the API server at ${API_BASE}.`,
+          { cause: e },
+        );
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || "Retry OCR failed");
+        const raw = err.message || err.error || "Retry OCR failed";
+        if (res.status >= 500) {
+          throw new Error(
+            /invalid signature|string to sign|api_secret/i.test(raw)
+              ? "Purchase bill processing failed. Please try again."
+              : raw,
+          );
+        }
+        throw new Error(raw);
       }
       return res.json();
     },
