@@ -44,7 +44,7 @@ function matchProductType(row, productType) {
   return t.includes(p) || t === p;
 }
 
-export function PurchaseManagement({ inventory = [], apiOnline, onInventoryRefresh, user }) {
+export function PurchaseManagement({ inventory = [], apiOnline, onInventoryRefresh, user, onOpenPurchaseBills = () => {} }) {
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -92,9 +92,14 @@ export function PurchaseManagement({ inventory = [], apiOnline, onInventoryRefre
           <div className="page-title">Purchase Management</div>
           <div className="page-sub">Vendor credit · cheques · stock GRN · WhatsApp reminders</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!apiOnline}>
-          <i className="ti ti-plus"></i> New Purchase Entry
-        </button>
+        <div>
+          <button className="btn btn-secondary" type="button" onClick={onOpenPurchaseBills} disabled={!apiOnline}>
+            Upload Purchase Bill
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowForm(true)} disabled={!apiOnline}>
+            <i className="ti ti-plus"></i> Enter Manually
+          </button>
+        </div>
       </div>
 
       {msg && (

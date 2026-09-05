@@ -76,28 +76,46 @@ if (process.env.NODE_ENV === "production" && !process.env.PORT) {
   );
 }
 
-/** Frontend origin(s) for CORS — comma-separated. Empty = allow any origin (dev). */
-const allowedOrigins = (process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN || "")
+/** Always allow the production SPA so Hostinger FRONTEND_ORIGIN=localhost cannot lock out other devices. */
+const BUILTIN_FRONTEND_ORIGINS = [
+  "https://quickfixsinventorymanagement.pages.dev",
+];
+
+const LOCAL_DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
+
+/** Frontend origin(s) for CORS — comma-separated. Empty = allow any origin (dev only). */
+const envOrigins = (process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN || "")
   .split(",")
   .map((s) => s.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
-/** Also allow 127.0.0.1 when localhost is listed (Windows dev). */
-const corsOrigins = [...allowedOrigins];
-for (const o of allowedOrigins) {
-  if (o.includes("localhost")) {
-    const alt = o.replace("localhost", "127.0.0.1");
-    if (!corsOrigins.includes(alt)) corsOrigins.push(alt);
+function withLocalhostAlias(origins) {
+  const corsOrigins = [...origins];
+  for (const o of origins) {
+    if (o.includes("localhost")) {
+      const alt = o.replace("localhost", "127.0.0.1");
+      if (!corsOrigins.includes(alt)) corsOrigins.push(alt);
+    }
   }
+  return corsOrigins;
 }
+
+const corsOrigins = withLocalhostAlias([
+  ...BUILTIN_FRONTEND_ORIGINS,
+  ...LOCAL_DEV_ORIGINS,
+  ...envOrigins,
+]);
 
 app.use(
   cors({
     origin(origin, callback) {
       // curl / server-to-server / same-origin proxies often omit Origin
       if (!origin) return callback(null, true);
-      if (corsOrigins.length === 0) return callback(null, true);
+      if (envOrigins.length === 0 && process.env.NODE_ENV !== "production") return callback(null, true);
       if (corsOrigins.includes(origin)) return callback(null, true);
+      if (/^https:\/\/[a-z0-9-]+\.quickfixsinventorymanagement\.pages\.dev$/i.test(origin)) {
+        return callback(null, true);
+      }
       console.warn(
         `[cors] Blocked origin "${origin}". Allowed: ${corsOrigins.join(", ") || "(none)"}. ` +
           `Set FRONTEND_ORIGIN in Coolify/panel to your frontend URL (no trailing slash).`,

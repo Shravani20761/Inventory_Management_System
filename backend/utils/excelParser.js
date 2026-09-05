@@ -74,7 +74,7 @@ export function parseBatteryExcel(buffer) {
       ah: parseNumber(item.ah),
       quantity: parseNumber(item.quantity) || 1,
       purchaseRate: parseNumber(item.purchaseRate),
-      sellRate: parseNumber(item.sellRate) || parseNumber(item.purchaseRate) * 1.3,
+      sellRate: parseNumber(item.sellRate),
       supplier: String(item.supplier || "").trim(),
       invoiceNo: String(item.invoiceNo || "").trim(),
       place: String(item.place || "").trim(),

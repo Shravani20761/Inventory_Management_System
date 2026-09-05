@@ -81,6 +81,7 @@ export function PurchaseAndSales({ purchases, setPurchases, sales, setSales, inv
           apiOnline={apiOnline}
           user={user}
           onInventoryRefresh={onInventoryRefresh}
+          onOpenPurchaseBills={() => setTab("bills")}
         />
       ) : tab === "bills" ? (
         <PurchaseBillsModule

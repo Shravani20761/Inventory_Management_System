@@ -95,6 +95,19 @@ export async function resolveMongoConnectionUri(rawUri) {
   }
 }
 
+/** Database name from a mongodb:// or mongodb+srv:// URI path (never logs credentials). */
+function databaseNameFromUri(uri) {
+  const trimmed = String(uri ?? "").trim();
+  const withoutScheme = trimmed.replace(/^mongodb(\+srv)?:\/\//, "");
+  const afterAt = withoutScheme.includes("@")
+    ? withoutScheme.slice(withoutScheme.lastIndexOf("@") + 1)
+    : withoutScheme;
+  const beforeQuery = afterAt.split("?")[0];
+  const slash = beforeQuery.indexOf("/");
+  if (slash < 0) return "";
+  return decodeURIComponent(beforeQuery.slice(slash + 1)).replace(/\/$/, "").trim();
+}
+
 export async function connectMongo() {
   if (mongoose.connection.readyState === 1) {
     connected = true;
@@ -110,14 +123,24 @@ export async function connectMongo() {
   }
 
   const connectionUri = await resolveMongoConnectionUri(uri);
+  const uriDb = databaseNameFromUri(connectionUri);
+  const envDb = String(process.env.MONGODB_DB_NAME ?? "").trim();
+  const dbName = envDb || uriDb || "";
 
   try {
     const safe = new URL(connectionUri.replace(/^mongodb(\+srv)?:\/\//, "http://"));
     console.log(
-      `[db] Connecting to host=${safe.hostname} db=${(safe.pathname || "/").replace(/^\//, "") || "(default)"}…`,
+      `[db] Connecting to host=${safe.hostname} db=${dbName || "(mongoose default: test)"}…`,
     );
   } catch {
     console.log("[db] Connecting to MongoDB…");
+  }
+
+  if (!dbName) {
+    console.warn(
+      '[db] WARNING: MONGODB_URI has no /databaseName and MONGODB_DB_NAME is unset. MongoDB will use "test". ' +
+        "Local and production must use the same cluster AND the same database or logins fail with Invalid email or password.",
+    );
   }
 
   bindConnectionListeners();
@@ -131,6 +154,7 @@ export async function connectMongo() {
     minPoolSize: 1,
     retryWrites: true,
     retryReads: true,
+    ...(dbName ? { dbName } : {}),
   };
 
   const maxAttempts = 5;

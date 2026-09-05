@@ -1097,7 +1097,7 @@ export async function parseBatteryExcelFile(file, options = {}) {
             isHomeInv || isLithiumIon ? parseNumber(item.mrpFinal) || parseNumber(item.mrp) : 0;
           const mrpN = isHomeInv || isLithiumIon ? mrpFinalN : parseNumber(item.mrp);
           const ob = isInvOnly
-            ? mrpN || parseNumber(item.newRateWithOB) || parseNumber(item.sellRate)
+            ? parseNumber(item.newRateWithOB) || parseNumber(item.sellRate) || parseNumber(item.price)
             : parseNumber(item.newRateWithOB) || parseNumber(item.sellRate);
           const wo = isInvOnly ? 0 : parseNumber(item.newRateWithoutOB);
           const ahFromCap = parseAhFromProductCapacity(String(item.productCapacity || ""));
@@ -1151,12 +1151,12 @@ export async function parseBatteryExcelFile(file, options = {}) {
             productCapacity,
             cd: isHomeInv || isInvOnlyInverter || isTrolley || isLithiumIon || !isInvOnly ? cd : undefined,
             dp: isHomeInv || isInvOnlyInverter || isTrolley || isLithiumIon || !isInvOnly ? dp : undefined,
-            mrpFinal: isHomeInv || isLithiumIon ? mrpFinalN || wo || ob : undefined,
+            mrpFinal: isHomeInv || isLithiumIon ? mrpFinalN : undefined,
             voltage: isLithiumIon ? parseNumber(item.voltage) : undefined,
             compatibleVA: isTrolley ? invVA : undefined,
             suitableBatteryType: isTrolley ? String(item.suitableBatteryType || item.description || "").trim() : undefined,
             description: isTrolley ? String(item.suitableBatteryType || item.description || "").trim() : undefined,
-            price: isTrolley ? parseNumber(item.price) || parseNumber(item.mrp) : undefined,
+            price: isTrolley ? parseNumber(item.price) || parseNumber(item.sellRate) : undefined,
             ah: batteryAHNum,
             batteryAH: batteryAHNum,
             homeSystemType: homeSys,
@@ -1184,11 +1184,7 @@ export async function parseBatteryExcelFile(file, options = {}) {
             finalPriceWithOldBattery: parseNumber(item.finalPriceWithOldBattery) || ob,
             finalPriceWithoutOldBattery: parseNumber(item.finalPriceWithoutOldBattery) || wo,
             purchaseRate: dp,
-            sellRate: isInvOnly
-              ? ob
-              : isHomeInv || isLithiumIon
-                ? ob || wo || mrpN || dp * 1.3
-                : ob || mrpN || dp * 1.3,
+            sellRate: ob,
             supplier: String(item.supplier || "").trim(),
             invoiceNo: String(item.invoiceNo || "").trim(),
             place: String(item.place || "").trim(),

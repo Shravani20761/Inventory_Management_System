@@ -13,9 +13,11 @@ import {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 },
-  fileFilter(_req, file, cb) {
-    const ok = /pdf|jpeg|jpg|png|webp|image/i.test(file.mimetype || "") || /\.(pdf|jpe?g|png|webp)$/i.test(file.originalname || "");
+    limits: { fileSize: 15 * 1024 * 1024 },
+    fileFilter(_req, file, cb) {
+      const ok =
+        /pdf|jpeg|jpg|png|webp/i.test(file.mimetype || "") ||
+        /\.(pdf|jpe?g|png|webp)$/i.test(file.originalname || "");
     if (!ok) return cb(new Error("Only JPG, JPEG, PNG, WEBP, or PDF files are allowed"));
     cb(null, true);
   },

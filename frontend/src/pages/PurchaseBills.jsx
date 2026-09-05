@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
 
 const ACCEPT = "image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf";
+const PENDING_STATUSES = new Set(["Uploaded", "Processing"]);
+const LOCKED_STATUSES = new Set(["Confirmed", "Inventory Updated"]);
 
 function confOf(bill, path) {
   const map = bill?.fieldConfidence || {};
@@ -14,12 +16,12 @@ function ConfBadge({ score }) {
   const low = score < 75;
   return (
     <span className={`ocr-conf ${low ? "low" : "ok"}`} title="OCR confidence">
-      {low ? "⚠" : "✓"} {Math.round(score)}%
+      {low ? "⚠ Verify" : "✓"} {Math.round(score)}%
     </span>
   );
 }
 
-function Field({ label, value, onChange, confidence, type = "text" }) {
+function Field({ label, value, onChange, confidence, type = "text", disabled }) {
   const low = confidence != null && confidence < 75;
   return (
     <div className={`form-group ${low ? "ocr-low" : ""}`}>
@@ -27,7 +29,7 @@ function Field({ label, value, onChange, confidence, type = "text" }) {
         <span>{label}</span>
         <ConfBadge score={confidence} />
       </label>
-      <input className="form-input" type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+      <input className="form-input" type={type} disabled={disabled} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }
@@ -35,19 +37,35 @@ function Field({ label, value, onChange, confidence, type = "text" }) {
 function emptyItem() {
   return {
     productName: "",
+    description: "",
     brand: "",
     sku: "",
     modelNumber: "",
-    quantity: "",
-    rate: "",
-    gstRate: "",
-    total: "",
     hsn: "",
+    quantity: "",
     unit: "Nos",
+    rate: "",
+    mrp: "",
+    discount: "",
+    gstRate: "",
+    taxableAmount: "",
+    total: "",
+    capacityAh: "",
+    voltage: "",
+    batteryType: "",
     matchStatus: "unmatched",
     productId: "",
     createNewProduct: false,
   };
+}
+
+function lineMathWarning(it) {
+  const qty = Number(it.quantity);
+  const rate = Number(it.rate);
+  const taxable = it.taxableAmount === "" || it.taxableAmount == null ? null : Number(it.taxableAmount);
+  if (!qty || !rate || taxable == null || Number.isNaN(taxable)) return "";
+  if (Math.abs(qty * rate - taxable) > 2) return "Qty × Rate ≠ taxable";
+  return "";
 }
 
 export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefresh, user }) {
@@ -57,19 +75,24 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
   const [msg, setMsg] = useState("");
   const [bill, setBill] = useState(null);
   const [processing, setProcessing] = useState(false);
+  const [pendingFile, setPendingFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraBlob, setCameraBlob] = useState(null);
   const [dupModal, setDupModal] = useState(null);
   const fileRef = useRef(null);
+  const photoRef = useRef(null);
   const camRef = useRef(null);
   const streamRef = useRef(null);
 
   const catalogOptions = useMemo(
     () =>
-      (inventory || []).map((r) => ({
-        id: String(r._id || r.id || ""),
-        label: `${r.brand || ""} ${r.model || r.batteryModel || r.inverterModel || ""}`.trim(),
-      })).filter((r) => r.id),
+      (inventory || [])
+        .map((r) => ({
+          id: String(r._id || r.id || ""),
+          label: `${r.brand || ""} ${r.model || r.batteryModel || r.inverterModel || ""}`.trim(),
+        }))
+        .filter((r) => r.id),
     [inventory],
   );
 
@@ -90,6 +113,20 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
     load();
   }, [load]);
 
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    streamRef.current?.getTracks?.().forEach((t) => t.stop());
+  }, [previewUrl]);
+
+  const stageFile = (file) => {
+    if (!file) return;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPendingFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    setView("stage");
+    setMsg("");
+  };
+
   const stopCamera = () => {
     streamRef.current?.getTracks?.().forEach((t) => t.stop());
     streamRef.current = null;
@@ -106,7 +143,7 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
         if (camRef.current) camRef.current.srcObject = stream;
       });
     } catch {
-      fileRef.current?.click();
+      photoRef.current?.click();
     }
   };
 
@@ -119,6 +156,8 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
     canvas.getContext("2d").drawImage(video, 0, 0);
     canvas.toBlob((blob) => {
       setCameraBlob(blob);
+      if (blob) stageFile(new File([blob], "capture.jpg", { type: "image/jpeg" }));
+      stopCamera();
     }, "image/jpeg", 0.92);
   };
 
@@ -130,6 +169,10 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
       const created = await api.purchaseBills.upload(file);
       setBill(created);
       setView("review");
+      const done = PENDING_STATUSES.has(created.ocrStatus)
+        ? await api.purchaseBills.waitForOcr(created.id || created._id)
+        : created;
+      setBill(done);
       await load();
     } catch (e) {
       setMsg(e.message || "Upload failed");
@@ -182,18 +225,32 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
   const confirm = async (force = false) => {
     try {
       await saveReview();
+      if (!force) {
+        const dup = await api.purchaseBills.checkDuplicate({
+          ...bill,
+          excludeId: bill.id || bill._id,
+        });
+        if (dup?.duplicate) {
+          setDupModal({ existing: dup.existing || [] });
+          return;
+        }
+      }
       const id = bill.id || bill._id;
       const result = await api.purchaseBills.confirm(id, { force });
       setBill(result.bill);
       setDupModal(null);
-      setMsg("Purchase confirmed. Inventory updated where products were matched.");
-      setView("history");
+      const changes = result.inventoryChanges || result.bill?.inventoryChanges || [];
+      setMsg(
+        changes.length
+          ? `Purchase confirmed. Inventory updated: ${changes.map((c) => `${c.productName || "item"} ${c.previousStock} → ${c.newStock}`).join("; ")}`
+          : "Purchase confirmed.",
+      );
+      setView("review");
       await load();
       onInventoryRefresh?.();
     } catch (e) {
       if (e.details?.duplicate || /duplicate/i.test(e.message || "")) {
-        const existing = e.details?.existing || [];
-        setDupModal({ existing });
+        setDupModal({ existing: e.details?.existing || [] });
         return;
       }
       setMsg(e.message || "Confirm failed");
@@ -205,7 +262,9 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
     if (!id || !file) return;
     setProcessing(true);
     try {
-      setBill(await api.purchaseBills.retryOcr(id, file));
+      const started = await api.purchaseBills.retryOcr(id, file);
+      const done = PENDING_STATUSES.has(started.ocrStatus) ? await api.purchaseBills.waitForOcr(id) : started;
+      setBill(done);
     } catch (e) {
       setMsg(e.message || "Retry failed");
     } finally {
@@ -223,9 +282,53 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
     setView("review");
   };
 
+  const locked = LOCKED_STATUSES.has(bill?.ocrStatus);
+  const failed = bill?.ocrStatus === "Failed";
+  const inProgress = processing || PENDING_STATUSES.has(bill?.ocrStatus);
+
+  const previewSrc = bill?.originalFileUrl || previewUrl;
+  const isPdfPreview = (file) =>
+    String(file?.type || bill?.fileType || previewSrc || "").toLowerCase().includes("pdf") ||
+    /\.pdf($|\?)/i.test(pendingFile?.name || bill?.originalFileName || previewSrc || "");
+
+  if (view === "stage" && pendingFile) {
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <div className="page-title">Upload Purchase Bill</div>
+            <div className="page-sub">Original file is shown as-is. Inventory is not updated until you confirm.</div>
+          </div>
+          <button className="btn btn-secondary" type="button" onClick={() => { setPendingFile(null); setView("history"); }}>
+            Cancel
+          </button>
+        </div>
+        {msg && <div className="card" style={{ marginBottom: 12 }}>{msg}</div>}
+        <div className="ocr-review">
+          <div className="card ocr-preview">
+            <div className="section-title">Original bill</div>
+            {isPdfPreview(pendingFile) ? (
+              <iframe title="Original bill" src={previewUrl} style={{ width: "100%", minHeight: 520, border: "none" }} />
+            ) : (
+              <img src={previewUrl} alt="Original bill" style={{ width: "100%", borderRadius: 8 }} />
+            )}
+            <div className="page-sub" style={{ marginTop: 8 }}>{pendingFile.name} · {(pendingFile.size / 1024).toFixed(0)} KB</div>
+          </div>
+          <div className="card">
+            <p>Check that the full bill is readable, then process. OCR will extract supplier, invoice, every item row, taxes, and totals. You will review before stock changes.</p>
+            <button className="btn btn-primary" type="button" disabled={!apiOnline || processing} onClick={() => processFile(pendingFile)}>
+              {processing ? "Processing purchase bill…" : "Process Bill"}
+            </button>
+            <button className="btn btn-secondary" type="button" style={{ marginLeft: 8 }} onClick={startManual}>
+              Enter Manually
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (view === "review" && bill) {
-    const failed = bill.ocrStatus === "Failed";
-    const locked = bill.ocrStatus === "Confirmed" || bill.ocrStatus === "Inventory Updated";
     return (
       <div>
         <div className="page-header">
@@ -233,6 +336,7 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
             <div className="page-title">Purchase Bill Review</div>
             <div className="page-sub">
               {bill.ocrStatus} · {bill.ocrEngine || "OCR"} · {bill.originalFileName || "Uploaded bill"}
+              {bill.branchName ? ` · ${bill.branchName}` : ""}
             </div>
           </div>
           <div>
@@ -240,22 +344,25 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
               Back to history
             </button>
             {!locked && (
-              <button className="btn btn-primary" onClick={() => confirm(false)} disabled={!apiOnline}>
-                Confirm & Add Purchase
+              <button className="btn btn-primary" onClick={() => confirm(false)} disabled={!apiOnline || inProgress}>
+                Confirm & Save Purchase
               </button>
             )}
           </div>
         </div>
         {msg && <div className="card" style={{ marginBottom: 12 }}>{msg}</div>}
+        {inProgress && (
+          <div className="card" style={{ marginBottom: 12 }}>Processing purchase bill… extracting all pages. Inventory is not updated yet.</div>
+        )}
         {failed && (
           <div className="card" style={{ marginBottom: 12, borderLeft: "4px solid #dc2626" }}>
-            <strong>Unable to extract sufficient information from this document.</strong>
+            <strong>Unable to extract sufficient information from this bill.</strong>
             <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
               <label className="btn btn-secondary">
                 Retry OCR
                 <input type="file" accept={ACCEPT} style={{ display: "none" }} onChange={(e) => retry(e.target.files?.[0])} />
               </label>
-              <button className="btn btn-secondary" type="button" onClick={startManual}>Enter Manually</button>
+              <button className="btn btn-secondary" type="button" onClick={startManual}>Enter Purchase Manually</button>
               <label className="btn btn-primary">
                 Upload Better Image
                 <input type="file" accept={ACCEPT} style={{ display: "none" }} onChange={(e) => retry(e.target.files?.[0])} />
@@ -263,17 +370,46 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
             </div>
           </div>
         )}
+        {(bill.financialWarnings || []).length > 0 && (
+          <div className="card" style={{ marginBottom: 12, borderLeft: "4px solid #d97706" }}>
+            <strong>Check these totals before confirming.</strong> Values were not changed automatically.
+            <ul style={{ margin: "8px 0 0 18px" }}>
+              {bill.financialWarnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {(bill.inventoryChanges || []).length > 0 && (
+          <div className="card" style={{ marginBottom: 12, borderLeft: "4px solid #047857" }}>
+            <strong>Inventory changes</strong>
+            <ul style={{ margin: "8px 0 0 18px" }}>
+              {bill.inventoryChanges.map((c, i) => (
+                <li key={c.productId || i}>
+                  {c.productName || c.productId}: {c.previousStock} + {c.purchasedQty} = {c.newStock}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div className="ocr-review">
           <div className="card ocr-preview">
             <div className="section-title">Original bill</div>
-            {bill.originalFileUrl ? (
-              String(bill.fileType || bill.originalFileUrl).includes("pdf") ? (
-                <iframe title="Original bill" src={bill.originalFileUrl} style={{ width: "100%", minHeight: 520, border: "none" }} />
+            {previewSrc ? (
+              isPdfPreview() ? (
+                <iframe title="Original bill" src={previewSrc} style={{ width: "100%", minHeight: 520, border: "none" }} />
               ) : (
-                <img src={bill.originalFileUrl} alt="Original bill" style={{ width: "100%", borderRadius: 8 }} />
+                <img src={previewSrc} alt="Original bill" style={{ width: "100%", borderRadius: 8 }} />
               )
             ) : (
               <div className="empty-state">No original file stored</div>
+            )}
+            {(bill.pageImageUrls || []).length > 1 && (
+              <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                {bill.pageImageUrls.map((u, i) => (
+                  <img key={u} src={u} alt={`Page ${i + 1}`} style={{ width: "100%", borderRadius: 8 }} />
+                ))}
+              </div>
             )}
             {bill.originalFileUrl && (
               <a className="btn btn-secondary" style={{ marginTop: 12 }} href={bill.originalFileUrl} target="_blank" rel="noreferrer">
@@ -282,74 +418,99 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
             )}
           </div>
           <div className="card ocr-fields">
-            <div className="section-title">Supplier</div>
-            <Field label="Supplier" value={bill.supplierDetails?.name} confidence={confOf(bill, "supplierDetails.name")} onChange={(v) => patch("supplierDetails.name", v)} />
-            <Field label="Invoice No" value={bill.invoiceNumber} confidence={confOf(bill, "invoiceNumber")} onChange={(v) => patch("invoiceNumber", v)} />
-            <Field label="Invoice Date" value={bill.invoiceDate} confidence={confOf(bill, "invoiceDate")} onChange={(v) => patch("invoiceDate", v)} />
-            <Field label="GSTIN" value={bill.supplierDetails?.gstin} confidence={confOf(bill, "supplierDetails.gstin")} onChange={(v) => patch("supplierDetails.gstin", v)} />
-            <Field label="Address" value={bill.supplierDetails?.address} onChange={(v) => patch("supplierDetails.address", v)} />
-            <Field label="Phone" value={bill.supplierDetails?.phone} onChange={(v) => patch("supplierDetails.phone", v)} />
-            <Field label="Email" value={bill.supplierDetails?.email} onChange={(v) => patch("supplierDetails.email", v)} />
-            <Field label="PAN" value={bill.supplierDetails?.pan} onChange={(v) => patch("supplierDetails.pan", v)} />
+            <div className="section-title">Supplier details</div>
+            <Field label="Supplier name" value={bill.supplierDetails?.name} confidence={confOf(bill, "supplierDetails.name")} onChange={(v) => patch("supplierDetails.name", v)} disabled={locked} />
+            <Field label="Legal name" value={bill.supplierDetails?.legalName} onChange={(v) => patch("supplierDetails.legalName", v)} disabled={locked} />
+            <Field label="GSTIN" value={bill.supplierDetails?.gstin} confidence={confOf(bill, "supplierDetails.gstin")} onChange={(v) => patch("supplierDetails.gstin", v)} disabled={locked} />
+            <Field label="Address" value={bill.supplierDetails?.address} onChange={(v) => patch("supplierDetails.address", v)} disabled={locked} />
+            <Field label="Phone" value={bill.supplierDetails?.phone} onChange={(v) => patch("supplierDetails.phone", v)} disabled={locked} />
+            <Field label="Email" value={bill.supplierDetails?.email} onChange={(v) => patch("supplierDetails.email", v)} disabled={locked} />
+            <Field label="PAN" value={bill.supplierDetails?.pan} onChange={(v) => patch("supplierDetails.pan", v)} disabled={locked} />
             <div className="grid-2">
-              <Field label="State" value={bill.supplierDetails?.state} onChange={(v) => patch("supplierDetails.state", v)} />
-              <Field label="State code" value={bill.supplierDetails?.stateCode} onChange={(v) => patch("supplierDetails.stateCode", v)} />
+              <Field label="State" value={bill.supplierDetails?.state} onChange={(v) => patch("supplierDetails.state", v)} disabled={locked} />
+              <Field label="State code" value={bill.supplierDetails?.stateCode} onChange={(v) => patch("supplierDetails.stateCode", v)} disabled={locked} />
             </div>
-            <Field label="PO number" value={bill.purchaseOrderNumber} onChange={(v) => patch("purchaseOrderNumber", v)} />
+
+            <div className="section-title" style={{ marginTop: 16 }}>Invoice details</div>
+            <Field label="Invoice number" value={bill.invoiceNumber} confidence={confOf(bill, "invoiceNumber")} onChange={(v) => patch("invoiceNumber", v)} disabled={locked} />
+            <Field label="Invoice date" value={bill.invoiceDate} confidence={confOf(bill, "invoiceDate")} onChange={(v) => patch("invoiceDate", v)} disabled={locked} />
+            <Field label="PO number" value={bill.purchaseOrderNumber} onChange={(v) => patch("purchaseOrderNumber", v)} disabled={locked} />
+            <Field label="PO date" value={bill.poDate} onChange={(v) => patch("poDate", v)} disabled={locked} />
+            <Field label="Due date" value={bill.dueDate} onChange={(v) => patch("dueDate", v)} disabled={locked} />
+            <Field label="Payment terms" value={bill.paymentTerms} onChange={(v) => patch("paymentTerms", v)} disabled={locked} />
+            <Field label="Place of supply" value={bill.placeOfSupply} onChange={(v) => patch("placeOfSupply", v)} disabled={locked} />
+            <Field label="Reverse charge" value={bill.reverseCharge} onChange={(v) => patch("reverseCharge", v)} disabled={locked} />
+            <Field label="Vehicle number" value={bill.vehicleNumber} onChange={(v) => patch("vehicleNumber", v)} disabled={locked} />
+            <Field label="Delivery note" value={bill.deliveryNote} onChange={(v) => patch("deliveryNote", v)} disabled={locked} />
 
             <div className="section-title" style={{ marginTop: 16 }}>Buyer</div>
-            <Field label="Company" value={bill.buyerDetails?.name} onChange={(v) => patch("buyerDetails.name", v)} />
-            <Field label="Billing address" value={bill.buyerDetails?.billingAddress || bill.buyerDetails?.address} onChange={(v) => patch("buyerDetails.billingAddress", v)} />
-            <Field label="Shipping address" value={bill.buyerDetails?.shippingAddress} onChange={(v) => patch("buyerDetails.shippingAddress", v)} />
-            <Field label="Buyer GSTIN" value={bill.buyerDetails?.gstin} onChange={(v) => patch("buyerDetails.gstin", v)} />
+            <Field label="Company" value={bill.buyerDetails?.name} onChange={(v) => patch("buyerDetails.name", v)} disabled={locked} />
+            <Field label="Billing address" value={bill.buyerDetails?.billingAddress || bill.buyerDetails?.address} onChange={(v) => patch("buyerDetails.billingAddress", v)} disabled={locked} />
+            <Field label="Shipping address" value={bill.buyerDetails?.shippingAddress} onChange={(v) => patch("buyerDetails.shippingAddress", v)} disabled={locked} />
+            <Field label="Buyer GSTIN" value={bill.buyerDetails?.gstin} onChange={(v) => patch("buyerDetails.gstin", v)} disabled={locked} />
 
-            <div className="section-title" style={{ marginTop: 16 }}>Totals</div>
+            <div className="section-title" style={{ marginTop: 16 }}>Totals and taxes</div>
             <div className="grid-3">
-              <Field label="Subtotal" type="number" value={bill.subtotal ?? ""} confidence={confOf(bill, "subtotal")} onChange={(v) => patch("subtotal", v)} />
-              <Field label="Taxable" type="number" value={bill.taxableAmount ?? ""} onChange={(v) => patch("taxableAmount", v)} />
-              <Field label="Discount" type="number" value={bill.discount ?? ""} onChange={(v) => patch("discount", v)} />
-              <Field label="CGST" type="number" value={bill.cgst ?? ""} onChange={(v) => patch("cgst", v)} />
-              <Field label="SGST" type="number" value={bill.sgst ?? ""} onChange={(v) => patch("sgst", v)} />
-              <Field label="IGST" type="number" value={bill.igst ?? ""} onChange={(v) => patch("igst", v)} />
-              <Field label="Freight" type="number" value={bill.freight ?? ""} onChange={(v) => patch("freight", v)} />
-              <Field label="Round off" type="number" value={bill.roundOff ?? ""} onChange={(v) => patch("roundOff", v)} />
-              <Field label="Grand total" type="number" value={bill.grandTotal ?? ""} confidence={confOf(bill, "grandTotal")} onChange={(v) => patch("grandTotal", v)} />
+              <Field label="Subtotal" type="number" value={bill.subtotal ?? ""} confidence={confOf(bill, "subtotal")} onChange={(v) => patch("subtotal", v)} disabled={locked} />
+              <Field label="Taxable" type="number" value={bill.taxableAmount ?? ""} onChange={(v) => patch("taxableAmount", v)} disabled={locked} />
+              <Field label="Discount" type="number" value={bill.discount ?? ""} onChange={(v) => patch("discount", v)} disabled={locked} />
+              <Field label="CGST" type="number" value={bill.cgst ?? ""} onChange={(v) => patch("cgst", v)} disabled={locked} />
+              <Field label="SGST" type="number" value={bill.sgst ?? ""} onChange={(v) => patch("sgst", v)} disabled={locked} />
+              <Field label="IGST" type="number" value={bill.igst ?? ""} onChange={(v) => patch("igst", v)} disabled={locked} />
+              <Field label="Cess" type="number" value={bill.cess ?? ""} onChange={(v) => patch("cess", v)} disabled={locked} />
+              <Field label="Freight" type="number" value={bill.freight ?? ""} onChange={(v) => patch("freight", v)} disabled={locked} />
+              <Field label="Transport" type="number" value={bill.transportation ?? ""} onChange={(v) => patch("transportation", v)} disabled={locked} />
+              <Field label="Packing" type="number" value={bill.packingCharges ?? ""} onChange={(v) => patch("packingCharges", v)} disabled={locked} />
+              <Field label="Round off" type="number" value={bill.roundOff ?? ""} onChange={(v) => patch("roundOff", v)} disabled={locked} />
+              <Field label="Grand total" type="number" value={bill.grandTotal ?? ""} confidence={confOf(bill, "grandTotal")} onChange={(v) => patch("grandTotal", v)} disabled={locked} />
+              <Field label="Amount paid" type="number" value={bill.amountPaid ?? ""} onChange={(v) => patch("amountPaid", v)} disabled={locked} />
+              <Field label="Balance due" type="number" value={bill.balanceDue ?? ""} onChange={(v) => patch("balanceDue", v)} disabled={locked} />
             </div>
-            <Field label="Amount in words" value={bill.amountInWords} onChange={(v) => patch("amountInWords", v)} />
+            <Field label="Amount in words" value={bill.amountInWords} onChange={(v) => patch("amountInWords", v)} disabled={locked} />
 
-            <div className="section-title" style={{ marginTop: 16 }}>Line items</div>
+            <div className="section-title" style={{ marginTop: 16 }}>Purchase items</div>
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>Product</th>
-                    <th>Brand</th>
                     <th>SKU</th>
+                    <th>HSN</th>
                     <th>Qty</th>
                     <th>Rate</th>
                     <th>GST %</th>
-                    <th>Total</th>
+                    <th>Amount</th>
                     <th>Match</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(bill.items || []).map((it, idx) => (
                     <tr key={it._id || idx}>
-                      <td><input className="form-input" value={it.productName || ""} onChange={(e) => patchItem(idx, "productName", e.target.value)} /></td>
-                      <td><input className="form-input" value={it.brand || ""} onChange={(e) => patchItem(idx, "brand", e.target.value)} /></td>
-                      <td><input className="form-input" value={it.sku || it.modelNumber || ""} onChange={(e) => { patchItem(idx, "sku", e.target.value); patchItem(idx, "modelNumber", e.target.value); }} /></td>
-                      <td><input className="form-input" type="number" value={it.quantity ?? ""} onChange={(e) => patchItem(idx, "quantity", e.target.value)} /></td>
-                      <td><input className="form-input" type="number" value={it.rate ?? ""} onChange={(e) => patchItem(idx, "rate", e.target.value)} /></td>
-                      <td><input className="form-input" type="number" value={it.gstRate ?? ""} onChange={(e) => patchItem(idx, "gstRate", e.target.value)} /></td>
-                      <td><input className="form-input" type="number" value={it.total ?? ""} onChange={(e) => patchItem(idx, "total", e.target.value)} /></td>
+                      <td>
+                        <input className="form-input" disabled={locked} value={it.productName || ""} onChange={(e) => patchItem(idx, "productName", e.target.value)} />
+                        <input className="form-input" disabled={locked} placeholder="Brand" style={{ marginTop: 4 }} value={it.brand || ""} onChange={(e) => patchItem(idx, "brand", e.target.value)} />
+                        {(it.capacityAh || it.voltage || it.batteryType) && (
+                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                            {[it.brand, it.modelNumber, it.capacityAh ? `${it.capacityAh}Ah` : "", it.voltage ? `${it.voltage}V` : "", it.batteryType].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
+                        {lineMathWarning(it) && <div className="ocr-conf low">{lineMathWarning(it)} ⚠</div>}
+                      </td>
+                      <td><input className="form-input" disabled={locked} value={it.sku || it.modelNumber || ""} onChange={(e) => { patchItem(idx, "sku", e.target.value); patchItem(idx, "modelNumber", e.target.value); }} /></td>
+                      <td><input className="form-input" disabled={locked} value={it.hsn || ""} onChange={(e) => patchItem(idx, "hsn", e.target.value)} /></td>
+                      <td><input className="form-input" disabled={locked} type="number" value={it.quantity ?? ""} onChange={(e) => patchItem(idx, "quantity", e.target.value)} /></td>
+                      <td><input className="form-input" disabled={locked} type="number" value={it.rate ?? ""} onChange={(e) => patchItem(idx, "rate", e.target.value)} /></td>
+                      <td><input className="form-input" disabled={locked} type="number" value={it.gstRate ?? ""} onChange={(e) => patchItem(idx, "gstRate", e.target.value)} /></td>
+                      <td><input className="form-input" disabled={locked} type="number" value={it.total ?? ""} onChange={(e) => patchItem(idx, "total", e.target.value)} /></td>
                       <td>
                         {it.matchStatus === "matched" ? (
-                          <div style={{ fontSize: 12, color: "#047857" }}>Matched: {it.matchedLabel}</div>
+                          <div style={{ fontSize: 12, color: "#047857" }}>Matched: {it.matchedLabel}{it.currentStock != null ? ` (stock ${it.currentStock})` : ""}</div>
                         ) : (
-                          <div style={{ fontSize: 12, color: "#b45309" }}>New Product Detected</div>
+                          <div style={{ fontSize: 12, color: "#b45309" }}>No match found</div>
                         )}
                         <select
                           className="form-select"
+                          disabled={locked}
                           value={it.productId || ""}
                           onChange={(e) => {
                             const id = e.target.value;
@@ -365,7 +526,7 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                             <option key={o.id} value={o.id}>{o.label}</option>
                           ))}
                         </select>
-                        {!it.productId && (
+                        {!it.productId && !locked && (
                           <label style={{ display: "flex", gap: 6, fontSize: 12, marginTop: 6 }}>
                             <input
                               type="checkbox"
@@ -381,17 +542,19 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                 </tbody>
               </table>
             </div>
-            <button
-              type="button"
-              className="btn btn-sm btn-secondary"
-              style={{ marginTop: 8 }}
-              onClick={() => setBill((b) => ({ ...b, items: [...(b.items || []), emptyItem()] }))}
-            >
-              Add line
-            </button>
+            {!locked && (
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                style={{ marginTop: 8 }}
+                onClick={() => setBill((b) => ({ ...b, items: [...(b.items || []), emptyItem()] }))}
+              >
+                Add line
+              </button>
+            )}
             {!locked && (
               <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => confirm(false)}>
-                Confirm & Add Purchase
+                Confirm & Save Purchase
               </button>
             )}
           </div>
@@ -400,10 +563,10 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
           <div className="modal-overlay">
             <div className="modal">
               <div className="modal-header">
-                <div className="modal-title">Possible Duplicate Purchase Bill</div>
+                <div className="modal-title">Possible duplicate purchase bill.</div>
               </div>
               <div className="modal-body">
-                <p>A similar bill already exists. Inventory will not be updated twice unless you continue anyway.</p>
+                <p>A similar bill already exists. Inventory will not be updated twice unless you continue.</p>
                 {(dupModal.existing || []).slice(0, 3).map((d) => (
                   <div key={d.id} className="card" style={{ marginTop: 8 }}>
                     {d.invoiceNumber} · {d.supplierName} · ₹{Number(d.grandTotal || 0).toLocaleString("en-IN")}
@@ -430,28 +593,21 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
           <div className="page-sub">Upload a bill → OCR extract → review → confirm stock</div>
         </div>
         <div>
+          <button className="btn btn-secondary" type="button" onClick={startManual} disabled={!apiOnline || processing}>
+            Enter Manually
+          </button>
           <button className="btn btn-secondary" type="button" onClick={openCamera} disabled={!apiOnline || processing}>
             Take Photo
           </button>
           <button className="btn btn-primary" type="button" onClick={() => fileRef.current?.click()} disabled={!apiOnline || processing}>
-            {processing ? "Processing…" : "Upload Purchase Bill"}
+            Upload Bill
           </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept={ACCEPT}
-            capture="environment"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              processFile(f);
-            }}
-          />
+          <input ref={fileRef} type="file" accept={ACCEPT} style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; stageFile(f); }} />
+          <input ref={photoRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; stageFile(f); }} />
         </div>
       </div>
       {msg && <div className="card" style={{ marginBottom: 12 }}>{msg}</div>}
-      {processing && <div className="card" style={{ marginBottom: 12 }}>OCR processing — extracting all pages. Inventory is not updated yet.</div>}
+      {processing && <div className="card" style={{ marginBottom: 12 }}>Processing purchase bill… extracting all pages. Inventory is not updated yet.</div>}
 
       {cameraOpen && (
         <div className="card" style={{ marginBottom: 16 }}>
@@ -460,12 +616,7 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
             {!cameraBlob ? (
               <button className="btn btn-primary" type="button" onClick={capturePhoto}>Use Photo</button>
             ) : (
-              <>
-                <button className="btn btn-primary" type="button" onClick={() => processFile(new File([cameraBlob], "capture.jpg", { type: "image/jpeg" }))}>
-                  Process Bill
-                </button>
-                <button className="btn btn-secondary" type="button" onClick={() => setCameraBlob(null)}>Retake</button>
-              </>
+              <button className="btn btn-secondary" type="button" onClick={() => setCameraBlob(null)}>Retake</button>
             )}
             <button className="btn btn-secondary" type="button" onClick={stopCamera}>Close camera</button>
           </div>
@@ -481,36 +632,38 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                 <th>Invoice No.</th>
                 <th>Supplier</th>
                 <th>Invoice Date</th>
-                <th>Products</th>
-                <th>Total Amount</th>
-                <th>GST</th>
-                <th>Status</th>
-                <th>Uploaded Date</th>
-                <th>Uploaded By</th>
+                <th>Total</th>
+                <th>Branch</th>
+                <th>Created By</th>
                 <th>OCR Status</th>
+                <th>Purchase Status</th>
+                <th>Bill</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11}>Loading…</td></tr>
+                <tr><td colSpan={10}>Loading…</td></tr>
               ) : bills.length === 0 ? (
-                <tr><td colSpan={11} className="empty-state">No purchase bills yet.</td></tr>
+                <tr><td colSpan={10} className="empty-state">No purchase bills yet.</td></tr>
               ) : (
                 bills.map((b) => (
                   <tr key={b.id}>
                     <td>{b.invoiceNumber || "—"}</td>
                     <td>{b.supplierName || b.supplierDetails?.name || "—"}</td>
                     <td>{b.invoiceDate || "—"}</td>
-                    <td>{b.itemCount ?? (b.items || []).length}</td>
                     <td>₹{Number(b.grandTotal || 0).toLocaleString("en-IN")}</td>
-                    <td>₹{Number(b.gstTotal || 0).toLocaleString("en-IN")}</td>
-                    <td><span className="badge badge-blue">{b.ocrStatus}</span></td>
-                    <td>{b.createdAt ? new Date(b.createdAt).toLocaleString() : "—"}</td>
+                    <td>{b.branchName || "—"}</td>
                     <td>{b.createdByName || user?.name || "—"}</td>
-                    <td>{b.ocrStatus}</td>
+                    <td><span className="badge badge-blue">{b.ocrStatus}</span></td>
+                    <td>{b.inventoryUpdated ? "Inventory updated" : b.ocrStatus === "Confirmed" ? "Confirmed" : "Pending confirm"}</td>
                     <td>
-                      <button className="btn btn-sm btn-secondary" type="button" onClick={() => openBill(b.id)}>Review</button>
+                      {b.originalFileUrl ? (
+                        <a href={b.originalFileUrl} target="_blank" rel="noreferrer">Preview</a>
+                      ) : "—"}
+                    </td>
+                    <td>
+                      <button className="btn btn-sm btn-secondary" type="button" onClick={() => openBill(b.id)}>Open</button>
                     </td>
                   </tr>
                 ))

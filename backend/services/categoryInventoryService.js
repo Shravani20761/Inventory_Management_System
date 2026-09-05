@@ -191,7 +191,7 @@ function slugComboId(brand, inv, bat) {
 
 /** Map DB doc → legacy Product-like row for quotations / dashboard. */
 export function carToLegacy(d) {
-  const sell = num(d.priceWithOldBattery) || num(d.priceWithoutOldBattery);
+  const sell = num(d.priceWithOldBattery);
   const dp = num(d.dpPlusGst ?? d.dp);
   const cd = num(d.cd);
   const cap = num(d.capacity);
@@ -254,7 +254,7 @@ export function bikeToLegacy(d) {
 
 export function inverterToLegacy(d) {
   const mrpN = num(d.mrp);
-  const sell = num(d.price) || num(d.sellRate) || mrpN;
+  const sell = num(d.price) || num(d.sellRate);
   const dp = num(d.dp ?? d.dpPrice ?? d.dpPlusGst ?? d.purchaseRate);
   const cd = num(d.cd ?? d.cdPrice);
   return {
@@ -274,7 +274,7 @@ export function inverterToLegacy(d) {
     sellingRate: sell,
     sellRate: sell,
     newRateWithOB: sell,
-    mrp: mrpN || sell,
+    mrp: mrpN,
     quantity: num(d.quantity),
     warranty: d.warranty ?? "",
     batteryType: d.technology ?? "",
@@ -287,7 +287,7 @@ export function inverterToLegacy(d) {
 /** Dynamic quotation catalog (`inverter_inventory`) → legacy row for Inventory UI + sync. */
 export function inverterCatalogToLegacy(d) {
   const mrpN = num(d.mrp);
-  const sell = num(d.price) || num(d.sellRate) || num(d.newRateWithOB) || mrpN;
+  const sell = num(d.price) || num(d.sellRate) || num(d.newRateWithOB);
   const va = num(d.inverterVA);
   const pc = String(d.productCapacity ?? "").trim() || (va ? `${va} VA` : "");
   const dp = num(d.dp ?? d.dpPrice ?? d.dpPlusGst);
@@ -311,7 +311,7 @@ export function inverterCatalogToLegacy(d) {
     sellingRate: sell,
     sellRate: sell,
     newRateWithOB: sell,
-    mrp: mrpN || sell,
+    mrp: mrpN,
     quantity: num(d.quantity),
     warranty: d.warranty ?? "",
     amazonPrice: num(d.amazonPrice),
@@ -380,7 +380,9 @@ function mergeInverterLegacyRows(legacySkuRows, catalogRows) {
 
 /** InvBatteryCombo → legacy row for comboRowQuotationService / isComboInventoryRow */
 export function invComboToLegacy(d) {
-  const comboPrice = num(d.comboPrice) || num(d.finalPriceWithOldBattery) || num(d.inverterPrice) + num(d.batteryPrice);
+  const withOld = num(d.finalPriceWithOldBattery);
+  const withoutOld = num(d.finalPriceWithoutOldBattery);
+  const comboPrice = num(d.comboPrice) || withOld;
   return {
     ...d,
     _id: d._id,
@@ -410,13 +412,15 @@ export function invComboToLegacy(d) {
     batteryType: d.batteryType ?? "",
     scrapRate: num(d.scrapRate),
     batteryWeight: num(d.batteryWeight),
+    comboPrice,
     inverterPrice: num(d.inverterPrice),
     batteryPrice: num(d.batteryPrice),
-    finalPriceWithOldBattery: num(d.finalPriceWithOldBattery) || comboPrice,
-    finalPriceWithoutOldBattery: num(d.finalPriceWithoutOldBattery),
-    newRateWithOB: comboPrice,
-    sellingRate: comboPrice,
-    sellRate: comboPrice,
+    finalPriceWithOldBattery: withOld,
+    finalPriceWithoutOldBattery: withoutOld,
+    newRateWithOB: withOld,
+    newRateWithoutOB: withoutOld,
+    sellingRate: withOld,
+    sellRate: withOld,
     quantity: num(d.quantity),
     backupHours: num(d.backupHours),
     warranty: d.warranty ?? "",
@@ -437,7 +441,7 @@ export function homeInvToLegacy(d) {
   const model = String(d.batteryModel || d.modelNumber || "").trim();
   const cd = num(d.cdPrice);
   const dp = num(d.dpPrice) || num(d.purchaseRate);
-  const mrpFinal = num(d.mrpFinal) || wo || sell;
+  const mrpFinal = num(d.mrpFinal);
   return {
     ...d,
     _id: d._id,
@@ -462,7 +466,7 @@ export function homeInvToLegacy(d) {
     sellingRate: sell,
     sellRate: sell,
     newRateWithOB: sell,
-    newRateWithoutOB: wo > 0 ? wo : mrpFinal,
+    newRateWithoutOB: wo,
     mrp: mrpFinal,
     quantity: num(d.quantity),
     warranty: d.warranty ?? "",
@@ -479,10 +483,10 @@ export function homeInvToLegacy(d) {
 /** `battery_inventory` → legacy row (shown on Home Inv Bat tab + dynamic pairing). */
 export function homeBackupBatteryCatalogToLegacy(d) {
   const sell = num(d.priceWithOld ?? d.price);
-  const wo = num(d.priceWithoutOld) > 0 ? num(d.priceWithoutOld) : sell;
+  const wo = num(d.priceWithoutOld);
   const dp = num(d.dpPrice ?? d.purchaseRate);
   const cd = num(d.cdPrice);
-  const mrpFinal = num(d.mrpFinal) || wo || sell;
+  const mrpFinal = num(d.mrpFinal);
   return {
     ...d,
     _id: d._id,
@@ -559,8 +563,8 @@ export function lithiumIonToLegacy(d) {
   const voltage = num(d.voltage);
   const ob = num(d.price);
   const wo = num(d.priceWithoutOld);
-  const mrpFinal = num(d.mrpFinal ?? d.mrp) || wo || ob;
-  const sell = ob || wo || mrpFinal;
+  const mrpFinal = num(d.mrpFinal ?? d.mrp);
+  const sell = ob;
   return {
     ...d,
     _id: d._id,
@@ -585,8 +589,8 @@ export function lithiumIonToLegacy(d) {
     purchaseRate: dp || num(d.purchaseRate),
     mrpFinal,
     mrp: mrpFinal,
-    newRateWithOB: ob || sell,
-    newRateWithoutOB: wo > 0 ? wo : mrpFinal,
+    newRateWithOB: ob,
+    newRateWithoutOB: wo,
     sellingRate: sell,
     sellRate: sell,
     scrapRate: num(d.scrapRate),
@@ -755,7 +759,7 @@ function rowToBikeDoc(row, bid) {
     num(row.ah ?? row.batteryAH ?? row.capacity ?? row.capacityAh) ||
     parseAhFromProductCapacityText(pcStr) ||
     parseAhFromBatteryModelText(modelNumber);
-  const sell = num(row.newRateWithOB ?? row.sellRate ?? row.sellingRate ?? row.mrp ?? row.mrpFinal);
+  const sell = num(row.newRateWithOB ?? row.sellRate ?? row.sellingRate);
   const noteParts = [String(row.notes ?? "").trim(), pcStr].filter(Boolean);
   const brandRaw = String(row.brand ?? "Unknown").trim() || "Unknown";
   const brandCanon = canonicalAutomotiveBrand(brandRaw);
@@ -786,7 +790,7 @@ function rowToTrolleyDoc(row, bid) {
   if (!pcStr && va) pcStr = `${va} VA`;
   const dp = num(row.dp ?? row.dpPrice ?? row.dpPlusGst ?? row.purchaseRate);
   const cd = num(row.cd ?? row.cdPrice);
-  const sell = num(row.price ?? row.mrp ?? row.newRateWithOB ?? row.sellRate ?? row.sellingRate);
+  const sell = num(row.price ?? row.sellRate ?? row.sellingRate ?? row.newRateWithOB);
   const suitableBatteryType = String(row.suitableBatteryType ?? row.description ?? "").trim();
   return {
     branchId: bid,
@@ -860,7 +864,7 @@ function rowToInverterDoc(row, bid) {
   const mrpN = num(row.mrp ?? row.mrpFinal);
   const dp = num(row.dp ?? row.dpPrice ?? row.dpPlusGst ?? row.purchaseRate);
   const cd = num(row.cd ?? row.cdPrice);
-  const sell = num(row.sellRate ?? row.newRateWithOB ?? row.sellingRate ?? row.price) || mrpN;
+  const sell = num(row.sellRate ?? row.newRateWithOB ?? row.sellingRate ?? row.price);
   return {
     branchId: bid,
     type: "Inverter",
@@ -871,7 +875,7 @@ function rowToInverterDoc(row, bid) {
     warranty: String(row.warranty ?? "").trim(),
     dp,
     cd,
-    mrp: mrpN || sell,
+    mrp: mrpN,
     price: sell,
     quantity: num(row.quantity) || 0,
     amazonPrice: num(row.amazonPrice),
@@ -909,12 +913,12 @@ function rowToInvComboDoc(row, bid) {
   }
 
   const withOld = num(
-    row.finalPriceWithOldBattery ?? row.newRateWithOB ?? row.sellRate ?? row.sellingRate ?? row.comboPrice,
+    row.finalPriceWithOldBattery ?? row.newRateWithOB ?? row.sellRate ?? row.sellingRate,
   );
   const withoutOld = num(row.finalPriceWithoutOldBattery ?? row.newRateWithoutOB);
   const invPrice = num(row.inverterPrice);
   const batPrice = num(row.batteryPrice);
-  const comboPriceLine = withOld || withoutOld || (invPrice > 0 && batPrice > 0 ? invPrice + batPrice : 0);
+  const comboPriceLine = num(row.comboPrice) || withOld;
 
   let comboId = String(row.comboId ?? "").trim();
   const brand = String(row.brand ?? "").trim();
@@ -924,9 +928,8 @@ function rowToInvComboDoc(row, bid) {
     comboId = slugComboId(brand, inverterModel, batteryModel);
   }
 
-  let finalWith = num(row.finalPriceWithOldBattery) || withOld || comboPriceLine;
-  let finalWithout = num(row.finalPriceWithoutOldBattery) || withoutOld;
-  if (!finalWithout && finalWith) finalWithout = finalWith;
+  const finalWith = num(row.finalPriceWithOldBattery) || withOld;
+  const finalWithout = num(row.finalPriceWithoutOldBattery) || withoutOld;
 
   const qty = num(row.quantity);
 
@@ -971,7 +974,7 @@ function rowToHomeInvDoc(row, bid) {
   const wo = num(row.newRateWithoutOB);
   const cd = num(row.cd ?? row.cdPrice);
   const dp = num(row.dp ?? row.dpPrice ?? row.dpPlusGst ?? row.purchaseRate);
-  const mrpFinal = num(row.mrpFinal ?? row.mrp ?? wo ?? ob);
+  const mrpFinal = num(row.mrpFinal ?? row.mrp);
   return {
     branchId: bid,
     brand,
@@ -984,8 +987,8 @@ function rowToHomeInvDoc(row, bid) {
     dpPrice: dp,
     mrpFinal,
     warranty: String(row.warranty ?? "").trim(),
-    price: ob || mrpFinal || wo,
-    priceWithoutOld: wo > 0 ? wo : mrpFinal,
+    price: ob,
+    priceWithoutOld: wo,
     purchaseRate: dp,
     quantity: num(row.quantity) || 0,
     batteryType: String(row.batteryType ?? "").trim(),

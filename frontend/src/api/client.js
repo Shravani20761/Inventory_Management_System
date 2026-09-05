@@ -1,14 +1,34 @@
-/** Dev: call Express directly (avoids Vite proxy ECONNRESET on large uploads). Prod: use /api or VITE_API_URL. */
+/** Production API root including `/api`. Vite inlines this at build time from VITE_API_URL. */
+const PRODUCTION_API_BASE = "https://api.krishnainfotec.com/api";
+
+function stripTrailingSlash(url) {
+  return String(url ?? "").trim().replace(/\/$/, "");
+}
+
+function isLocalHostUrl(url) {
+  return /localhost|127\.0\.0\.1/i.test(String(url ?? ""));
+}
+
+/**
+ * Dev: call Express on this machine (avoids Vite proxy ECONNRESET on large uploads).
+ * Production builds: always the public API — never localhost and never same-origin `/api`
+ * (Cloudflare Pages / Hostinger static have no Express proxy, so `/api` would miss the backend).
+ */
 function resolveApiBase() {
-  const configured = String(import.meta.env.VITE_API_URL ?? "").trim();
-  if (configured && configured !== "/api") {
-    return configured.replace(/\/$/, "");
-  }
+  const configured = stripTrailingSlash(import.meta.env.VITE_API_URL ?? "");
+
   if (import.meta.env.DEV) {
-    const direct = String(import.meta.env.VITE_API_DIRECT ?? "http://127.0.0.1:3001/api").trim();
-    return direct.replace(/\/$/, "");
+    if (configured && configured !== "/api" && !isLocalHostUrl(configured)) {
+      return configured;
+    }
+    const direct = stripTrailingSlash(import.meta.env.VITE_API_DIRECT ?? "http://127.0.0.1:3001/api");
+    return direct || "http://127.0.0.1:3001/api";
   }
-  return "/api";
+
+  if (configured && configured !== "/api" && !isLocalHostUrl(configured)) {
+    return configured;
+  }
+  return PRODUCTION_API_BASE;
 }
 
 const API_BASE = resolveApiBase();
@@ -121,7 +141,9 @@ async function request(path, options = {}) {
     });
   } catch (e) {
     const wrapped = new Error(
-      "Cannot reach API server. Run: npm run dev (starts API on port 3001 + frontend). " + (e.message || ""),
+      isLocalApiTarget()
+        ? "Cannot reach API server. Run: npm run dev (starts API on port 3001 + frontend). " + (e.message || "")
+        : `Cannot reach API server at ${API_BASE}. ${e.message || ""}`,
       { cause: e },
     );
     throw wrapped;
@@ -143,7 +165,9 @@ async function request(path, options = {}) {
     }
     if (res.status === 502 || res.status === 503) {
       throw new Error(
-        "API server not responding (Bad Gateway). Stop all terminals, then run: npm run dev — wait until you see 'BatteryPro API running at http://localhost:3001'."
+        isLocalApiTarget()
+          ? "API server not responding (Bad Gateway). Stop all terminals, then run: npm run dev — wait until the API is listening on port 3001."
+          : `API server not responding (Bad Gateway) at ${API_BASE}.`,
       );
     }
     const e = new Error(msg, { cause: err });
@@ -576,7 +600,9 @@ export const api = {
       lastErr?.message?.includes("Upload failed")
         ? lastErr.message
         : `Upload could not reach the API (${lastErr?.message || "network error"}). ` +
-            "Ensure npm run dev is running and the API shows port 3001, then try again.",
+            (isLocalApiTarget()
+              ? "Ensure npm run dev is running and the API is on port 3001, then try again."
+              : `Confirm ${API_BASE} is reachable, then try again.`),
       { cause: lastErr },
     );
   },
@@ -661,7 +687,6 @@ export const api = {
     upload: async (file) => {
       const form = new FormData();
       form.append("file", file);
-      const token = getToken();
       const res = await fetch(`${API_BASE}/purchase-bills/upload`, {
         method: "POST",
         headers: authHeaders(),
@@ -680,7 +705,6 @@ export const api = {
     retryOcr: async (id, file) => {
       const form = new FormData();
       if (file) form.append("file", file);
-      const token = getToken();
       const res = await fetch(`${API_BASE}/purchase-bills/${encodeURIComponent(id)}/retry-ocr`, {
         method: "POST",
         headers: authHeaders(),
@@ -691,6 +715,18 @@ export const api = {
         throw new Error(err.error || "Retry OCR failed");
       }
       return res.json();
+    },
+    checkDuplicate: (payload) =>
+      request("/purchase-bills/check-duplicate", { method: "POST", body: JSON.stringify(payload) }),
+    waitForOcr: async (id, { timeoutMs = 180000, intervalMs = 1500 } = {}) => {
+      const started = Date.now();
+      while (Date.now() - started < timeoutMs) {
+        const bill = await request(`/purchase-bills/${encodeURIComponent(id)}`);
+        const st = String(bill?.ocrStatus || "");
+        if (st && st !== "Processing" && st !== "Uploaded") return bill;
+        await new Promise((r) => setTimeout(r, intervalMs));
+      }
+      throw new Error("Processing is taking too long. Open this bill from Purchase History or retry OCR.");
     },
   },
 

@@ -32,7 +32,7 @@ function fuzzyScore(a, b) {
 function catalogKeys(row) {
   return {
     id: String(row._id ?? row.id ?? ""),
-    sku: row.comboId || row.model || row.modelNumber || row.batteryModel || "",
+    sku: row.comboId || row.sku || row.model || row.modelNumber || row.batteryModel || "",
     model: row.model || row.modelNumber || row.batteryModel || row.inverterModel || "",
     brand: row.brand || "",
     name: [row.brand, row.model || row.batteryModel || row.inverterModel, row.comboId].filter(Boolean).join(" "),
@@ -41,6 +41,10 @@ function catalogKeys(row) {
   };
 }
 
+/**
+ * Match priority: SKU → model/code → brand+model → exact name → normalized name → fuzzy.
+ * Never auto-creates products.
+ */
 export async function matchBillItemsToInventory(items, { branchId = null, isSuperAdmin = false } = {}) {
   const catalog = await listAllCategoriesAsLegacyProducts({
     branchId,
@@ -52,34 +56,38 @@ export async function matchBillItemsToInventory(items, { branchId = null, isSupe
 
   return (items || []).map((item) => {
     const sku = item.sku || item.modelNumber || "";
-    const name = item.productName || "";
+    const name = item.productName || item.description || "";
     const brand = item.brand || "";
     let best = null;
     let bestScore = 0;
-    let method = "";
+    let method = "none";
+
+    const trySet = (row, score, why) => {
+      if (score > bestScore) {
+        best = row;
+        bestScore = score;
+        method = why;
+      }
+    };
 
     for (const row of rows) {
-      const skuExact = sku && norm(sku) && (norm(sku) === norm(row.sku) || norm(sku) === norm(row.model));
-      if (skuExact) {
-        best = row;
-        bestScore = 100;
-        method = "sku";
-        break;
+      if (sku && norm(sku) && (norm(sku) === norm(row.sku) || norm(sku) === norm(row.model))) {
+        trySet(row, 100, "sku");
+        if (bestScore === 100) break;
       }
-      const brandModel =
-        brand && row.brand && norm(brand) === norm(row.brand) && fuzzyScore(sku || name, row.model) >= 88;
-      const score = Math.max(
-        skuExact ? 100 : 0,
-        brandModel ? 92 : 0,
-        fuzzyScore(sku, row.model),
-        fuzzyScore(name, row.name),
-        fuzzyScore(name, row.model),
-        brand && norm(brand) === norm(row.brand) ? fuzzyScore(name, row.model) : 0,
-      );
-      if (score > bestScore) {
-        bestScore = score;
-        best = row;
-        method = score >= 92 ? "brand+model" : score >= 88 ? "name" : "fuzzy";
+    }
+    if (bestScore < 100) {
+      for (const row of rows) {
+        if (sku && norm(sku) && norm(sku) === norm(row.model)) trySet(row, 98, "model");
+        if (brand && row.brand && norm(brand) === norm(row.brand) && fuzzyScore(sku || name, row.model) >= 90) {
+          trySet(row, 94, "brand+model");
+        }
+        if (name && norm(name) === norm(row.name)) trySet(row, 92, "exact-name");
+        if (name && norm(name) === norm(row.model)) trySet(row, 90, "normalized-name");
+        trySet(row, fuzzyScore(sku, row.model), "fuzzy");
+        trySet(row, fuzzyScore(name, row.name), "fuzzy");
+        trySet(row, fuzzyScore(name, row.model), "fuzzy");
+        if (brand && norm(brand) === norm(row.brand)) trySet(row, fuzzyScore(name, row.model), "fuzzy");
       }
     }
 
@@ -100,8 +108,9 @@ export async function matchBillItemsToInventory(items, { branchId = null, isSupe
       matchStatus: "new",
       matchedLabel: "",
       matchScore: bestScore,
-      matchMethod: method || "none",
+      matchMethod: method,
       currentStock: null,
+      createNewProduct: false,
     };
   });
 }

@@ -10,13 +10,11 @@ import {
   getMonthlyPurchaseReport,
 } from "../services/purchaseManagementService.js";
 import { runPurchaseReminderJob } from "../services/purchaseReminderService.js";
+import { tenantFromReq, writeBranchIdFromReq } from "../utils/tenant.js";
 
 function tenant(req) {
-  let branchId = req.user?.branchId || null;
-  if (branchId && typeof branchId === "object") {
-    branchId = branchId._id?.toString?.() ?? branchId.toString?.() ?? null;
-  }
-  return { branchId, isSuperAdmin: req.user?.role === "superAdmin" };
+  const t = tenantFromReq(req);
+  return { ...t, branchId: writeBranchIdFromReq(req, req.body?.branchId || req.query?.branchId) };
 }
 
 export async function listPurchaseOrdersController(req, res, next) {

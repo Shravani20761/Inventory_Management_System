@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext.jsx";
 import { navForRole } from "./constants/nav.js";
-import { api, isApiAvailable, loadFromApi } from "./api/client.js";
+import { api, isApiAvailable, loadFromApi, isLocalApiTarget, getApiBase } from "./api/client.js";
 import { HOME_INVERTER_BATTERY_TYPE, INVERTER_BATTERY_TYPE, TROLLEY_TYPE, LITHIUM_ION_BATTERY_TYPE, INVENTORY_SECTIONS, INVENTORY_FORM_TYPES, inventorySectionTabLabel, isHomeInverterBatterySection, isInverterBatterySection, isInverterOnlySection, isLithiumIonBatterySection, isTrolleySection, shouldShowOnHomeInvBatteryTab, shouldShowOnInverterInventoryTab } from "./constants/inventoryTypes.js";
 import { COMBO_INVENTORY_TABLE_COLUMNS } from "./constants/comboInventoryImport.js";
 import { INVERTER_INVENTORY_TABLE_COLUMNS, INVERTER_INVENTORY_TABLE_GROUPS } from "./constants/inverterInventoryImport.js";
@@ -184,7 +184,11 @@ export default function App() {
       if (cancelled) return;
       setApiOnline(ok);
       if (!ok) {
-        setSyncError("Cannot reach API server. Run npm run dev from Inventory_management (API on port 3001).");
+        setSyncError(
+          isLocalApiTarget()
+            ? "Cannot reach API server. Run npm run dev from Inventory_management (API on port 3001)."
+            : `Cannot reach API server at ${getApiBase()}.`,
+        );
         return;
       }
       setSyncError("");
@@ -346,8 +350,9 @@ export default function App() {
           {syncError.includes("Session expired") ? null : (
             <>
               {" "}
-              Open the app at <code>http://localhost:5173</code> with <code>npm run dev</code> running (API on port 3001).
-              Production builds need <code>VITE_API_URL</code> pointing at your live API (see <code>frontend/.env.production.example</code>).
+              {isLocalApiTarget()
+                ? "Open the app at http://localhost:5173 with npm run dev running (API on port 3001)."
+                : "This production site talks to https://api.krishnainfotec.com/api — confirm that backend is running."}
             </>
           )}
           <button
@@ -753,6 +758,12 @@ function formatComboVaAhLine(item) {
   return "—";
 }
 
+function formatRupeeOrDash(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n === 0) return "—";
+  return `₹${n.toLocaleString("en-IN")}`;
+}
+
 function formatTrolleyTableCell(col, item, serialNumber = null, branchName = "") {
   const key = col.key;
   if (key === "srNo") {
@@ -774,7 +785,7 @@ function formatTrolleyTableCell(col, item, serialNumber = null, branchName = "")
   let v = item[key];
   if (key === "dp") v = item.dp ?? item.dpPrice ?? item.purchaseRate;
   if (key === "cd") v = item.cd ?? item.cdPrice;
-  if (key === "price") v = item.price ?? item.sellRate ?? item.mrp;
+  if (key === "price") v = item.price ?? item.sellRate;
   if (key === "quantity") {
     const q = Number(item.quantity ?? item.qty ?? 0);
     return (
@@ -784,7 +795,7 @@ function formatTrolleyTableCell(col, item, serialNumber = null, branchName = "")
     );
   }
   if (v === "" || v == null) return "—";
-  if (col.format === "rupee") return `₹${Number(v).toLocaleString("en-IN")}`;
+  if (col.format === "rupee") return formatRupeeOrDash(v);
   if (col.format === "num") return Number(v).toLocaleString("en-IN");
   return String(v);
 }
@@ -832,7 +843,7 @@ function formatInverterTableCell(col, item, serialNumber = null) {
   if (key === "sellRate") v = item.sellRate ?? item.price ?? item.newRateWithOB ?? item.sellingRate;
   if (key === "pl") {
     const buy = Number(item.dp ?? item.dpPrice ?? item.purchaseRate ?? 0);
-    const sell = Number(item.sellRate ?? item.price ?? item.newRateWithOB ?? item.mrp ?? 0);
+    const sell = Number(item.sellRate ?? item.price ?? item.newRateWithOB ?? 0);
     const profit = sell - buy;
     const pct = buy ? ((profit / buy) * 100).toFixed(1) : "0.0";
     if (!buy && !sell) return "—";
@@ -843,7 +854,7 @@ function formatInverterTableCell(col, item, serialNumber = null) {
     );
   }
   if (v === "" || v == null) return "—";
-  if (col.format === "rupee") return `₹${Number(v).toLocaleString("en-IN")}`;
+  if (col.format === "rupee") return formatRupeeOrDash(v);
   if (col.format === "num") return Number(v).toLocaleString("en-IN");
   return String(v);
 }
@@ -880,7 +891,7 @@ function formatLithiumIonTableCell(col, item, serialNumber = null, branchName = 
   if (key === "weight") v = item.weight ?? item.batteryWeight;
   if (key === "cd") v = item.cd ?? item.cdPrice;
   if (key === "dp") v = item.dp ?? item.dpPrice ?? item.purchaseRate ?? item.dpPlusGst;
-  if (key === "mrpFinal") v = item.mrpFinal ?? item.mrp ?? item.newRateWithoutOB;
+  if (key === "mrpFinal") v = item.mrpFinal ?? item.mrp;
   if (key === "newRateWithOB") v = item.newRateWithOB ?? item.sellRate;
   if (key === "newRateWithoutOB") v = item.newRateWithoutOB;
   if (key === "quantity") {
@@ -892,7 +903,7 @@ function formatLithiumIonTableCell(col, item, serialNumber = null, branchName = 
     );
   }
   if (v === "" || v == null) return "—";
-  if (col.format === "rupee") return `₹${Number(v).toLocaleString("en-IN")}`;
+  if (col.format === "rupee") return formatRupeeOrDash(v);
   if (col.format === "num") return Number(v).toLocaleString("en-IN");
   return String(v);
 }
@@ -937,8 +948,10 @@ function formatComboTableCell(col, item, serialNumber = null) {
       if (fromSpec > 0) v = fromSpec;
     }
   }
+  if (key === "newRateWithOB") v = item.newRateWithOB ?? item.finalPriceWithOldBattery;
+  if (key === "newRateWithoutOB") v = item.newRateWithoutOB ?? item.finalPriceWithoutOldBattery;
   if (v === "" || v == null) return "—";
-  if (col.format === "rupee") return `₹${Number(v).toLocaleString("en-IN")}`;
+  if (col.format === "rupee") return formatRupeeOrDash(v);
   if (col.format === "num") return Number(v).toLocaleString("en-IN");
   return String(v);
 }
@@ -954,9 +967,9 @@ function formatHomeInvBatTableCell(col, item, serialNumber = null) {
   if (key === "weight") v = item.weight ?? item.batteryWeight;
   if (key === "cd") v = item.cd ?? item.cdPrice;
   if (key === "dp") v = item.dp ?? item.dpPrice ?? item.purchaseRate ?? item.dpPlusGst;
-  if (key === "mrpFinal") v = item.mrpFinal ?? item.mrp ?? item.newRateWithoutOB;
+  if (key === "mrpFinal") v = item.mrpFinal ?? item.mrp;
   if (v === "" || v == null) return "—";
-  if (col.format === "rupee") return `₹${Number(v).toLocaleString("en-IN")}`;
+  if (col.format === "rupee") return formatRupeeOrDash(v);
   if (col.format === "num") return Number(v).toLocaleString("en-IN");
   return String(v);
 }
@@ -1051,7 +1064,7 @@ function inventoryFormFromItem(item, defaultTypeWhenAdding = "Car", defaultBrand
     productCapacity: item.productCapacity ?? "",
     compatibleVA: item.compatibleVA ?? item.inverterVA ?? "",
     suitableBatteryType: item.suitableBatteryType ?? item.description ?? "",
-    price: item.price ?? item.sellRate ?? item.mrp ?? "",
+    price: item.price ?? item.sellRate ?? "",
     type: item.type ?? "Car",
     weight: item.weight ?? "",
     scrapRate: item.scrapRate ?? "",
@@ -1138,7 +1151,7 @@ function mapInventoryFromServer(rows) {
       _inventoryCategory: row._inventoryCategory,
       _catalogSource: row._catalogSource,
       suitableBatteryType: row.suitableBatteryType ?? row.description ?? "",
-      price: row.price ?? row.sellRate ?? row.mrp ?? "",
+      price: row.price ?? row.sellRate ?? "",
     };
     return shouldShowOnHomeInvBatteryTab(mapped) ? tagHomeInvBatteryRow(mapped) : mapped;
   });
@@ -2235,11 +2248,13 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
                       <td>
                         <span className="badge badge-blue">{item.type}</span>
                       </td>
-                      <td style={{ color: "#6b7280", fontSize: 14 }}>₹{buyForPl.toLocaleString("en-IN")}</td>
-                      <td style={{ color: "#374151", fontWeight: 500, fontSize: 14 }}>₹{Number(item.mrp || 0).toLocaleString("en-IN")}</td>
+                      <td style={{ color: "#6b7280", fontSize: 14 }}>{formatRupeeOrDash(buyForPl)}</td>
+                      <td style={{ color: "#374151", fontWeight: 500, fontSize: 14 }}>{formatRupeeOrDash(item.mrp)}</td>
                       <td>
                         <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`} style={{ padding: "3px 6px", fontSize: 13, display: "inline-block" }}>
-                          {profit >= 0 ? "+" : ""}₹{profit.toLocaleString("en-IN")} ({pct}%)
+                          {!sellForPl
+                            ? "—"
+                            : `${profit >= 0 ? "+" : ""}₹${profit.toLocaleString("en-IN")} (${pct}%)`}
                         </div>
                       </td>
                       <td>
@@ -2802,10 +2817,10 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
                       {isAutomotiveTab ? (
                         <td style={{ color: "#6b7280" }}>{cd > 0 ? `₹${cd.toLocaleString()}` : "—"}</td>
                       ) : null}
-                      <td style={{ color: "#374151", fontWeight: 500 }}>₹{Number(item.mrp || 0).toLocaleString()}</td>
+                      <td style={{ color: "#374151", fontWeight: 500 }}>{formatRupeeOrDash(item.mrp)}</td>
                       <td style={{ color: "#6b7280" }}>{String(item.warranty || "").trim() || "—"}</td>
-                      <td style={{ color: "#0f766e", fontWeight: 600 }}>₹{ob.toLocaleString()}</td>
-                      <td style={{ color: "#0369a1", fontWeight: 500 }}>₹{wo.toLocaleString()}</td>
+                      <td style={{ color: "#0f766e", fontWeight: 600 }}>{formatRupeeOrDash(ob)}</td>
+                      <td style={{ color: "#0369a1", fontWeight: 500 }}>{formatRupeeOrDash(wo)}</td>
                       <td>
                         <span className={`badge ${item.quantity <= 3 ? "badge-red" : item.quantity <= 6 ? "badge-yellow" : "badge-green"}`}>
                           {item.quantity}
@@ -2813,7 +2828,9 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
                       </td>
                       <td>
                         <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`}>
-                          {profit >= 0 ? "+" : ""}₹{profit.toLocaleString()} ({pct}%)
+                          {!sellForPl
+                            ? "—"
+                            : `${profit >= 0 ? "+" : ""}₹${profit.toLocaleString()} (${pct}%)`}
                         </div>
                       </td>
                       <td>
@@ -2939,18 +2956,14 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
   const dpNum = Number(form.dp) || Number(form.dpPlusGst) || 0;
   const cdNum = Number(form.cd) || 0;
   const obNum = Number(form.newRateWithOB) || 0;
-  const woNum = Number(form.newRateWithoutOB) || 0;
-  const mrpFinalNum = Number(form.mrpFinal) || Number(form.mrp) || 0;
-  const priceNum = Number(form.price) || Number(form.mrp) || 0;
+  const priceNum = Number(form.price) || 0;
   const sellRateNum = Number(form.sellRate) || Number(form.newRateWithOB) || 0;
   const purchaseForPl = isTrolleyForm || isHomeInvBatForm || isInverterForm || isLithiumIonForm ? dpNum : dpNum;
   const sellForPl = isTrolleyForm
     ? priceNum
     : isInverterForm
-      ? sellRateNum || mrpFinalNum
-      : isHomeInvBatForm || isLithiumIonForm
-        ? obNum || woNum || mrpFinalNum
-        : obNum || mrpFinalNum;
+      ? sellRateNum
+      : obNum;
   const profit = sellForPl - purchaseForPl;
   const pct = purchaseForPl ? ((profit / purchaseForPl) * 100).toFixed(1) : 0;
 
@@ -2982,19 +2995,16 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
     }
     const mrpFinalN = Number(form.mrpFinal) || Number(form.mrp) || 0;
     const sellInv = Number(form.sellRate) || Number(form.newRateWithOB) || 0;
-    const mrpN = isInverterForm ? mrpFinalN : mrpFinalN;
-    const ob = isInverterForm ? sellInv || mrpN : Number(form.newRateWithOB) || 0;
+    const ob = isInverterForm ? sellInv : Number(form.newRateWithOB) || 0;
     const wo = isInverterForm ? 0 : Number(form.newRateWithoutOB) || 0;
     const invP = Number(form.inverterPrice) || 0;
     const batP = Number(form.batteryPrice) || 0;
     const purchase = isInverterForm || isTrolleyForm || isLithiumIonForm ? dp : dp || (isComboForm ? invP + batP : 0);
     const sell = isTrolleyForm
-      ? Number(form.price) || Number(form.mrp) || 0
+      ? Number(form.price) || 0
       : isInverterForm
-        ? sellInv || mrpN
-        : isHomeInvBatForm || isLithiumIonForm
-          ? ob || wo || mrpFinalN
-          : ob || mrpFinalN;
+        ? sellInv
+        : ob;
     const trolleyVa =
       parseInverterVaFromForm(form.compatibleVA) ||
       parseVaFromSpec(String(form.productCapacity || "")) ||
@@ -3058,7 +3068,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
       price: isTrolleyForm || isInverterForm ? sell : undefined,
       sellRate: sell,
       mrpFinal: mrpFinalN,
-      mrp: isTrolleyForm ? sell : mrpFinalN,
+      mrp: isTrolleyForm ? Number(form.mrp) || 0 : mrpFinalN,
       newRateWithOB: isInverterForm ? sell : ob,
       newRateWithoutOB: wo,
       purchaseRate: purchase,
@@ -4765,7 +4775,7 @@ function invQty(b = {}) {
   return Number(b.quantity ?? b.qty ?? 0) || 0;
 }
 function invSellRate(b = {}) {
-  return Number(b.sellRate ?? b.sellingRate ?? b.newRateWithOB ?? b.mrp ?? 0) || 0;
+  return Number(b.sellRate ?? b.sellingRate ?? b.newRateWithOB ?? 0) || 0;
 }
 function invModelName(b = {}) {
   return b.model ?? b.modelName ?? "Item";

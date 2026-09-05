@@ -29,7 +29,7 @@ function normalizeProduct(input, branchId) {
       : input.sellRate ?? input.sellingRate ?? 0,
   );
   const wo = Number(input.newRateWithoutOB ?? 0);
-  const sell = ob || wo || mrpFinal || Number(input.sellRate ?? input.sellingRate ?? 0);
+  const sell = Number(input.sellRate ?? input.sellingRate ?? 0) || ob;
 
   return {
     branchId: branchId || input.branchId || null,

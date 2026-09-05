@@ -22,7 +22,7 @@ export function calculateProfit({ purchaseRate = 0, sellingRate = 0, quantity = 
 }
 
 export function enrichProductProfit(product) {
-  const sellingRate = product.sellingRate ?? product.sellRate ?? product.mrp ?? 0;
+  const sellingRate = product.sellingRate ?? product.sellRate ?? product.newRateWithOB ?? 0;
   const purchaseRate =
     product.purchaseRate ?? product.dp ?? product.dpPrice ?? product.dpPlusGst ?? 0;
   return {
