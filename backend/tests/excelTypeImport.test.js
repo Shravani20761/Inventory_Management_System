@@ -96,25 +96,86 @@ test("TEST 5 — blank Type stays blank, not Car", async () => {
 });
 
 test("TEST 6 — upsert does not overwrite existing Type/Model Type with blank", () => {
-  const existing = { batteryType: "DIN", modelType: "Tall Tubular", quantity: 2 };
+  const existing = { batteryType: "DIN", modelType: "Tall Tubular", inverterType: "Sine Wave", quantity: 2 };
   const incomingBlank = omitBlankAttributeUpdates({
     batteryType: "",
     modelType: "",
+    inverterType: "",
+    pl: "",
     quantity: 5,
   });
   assert.equal("batteryType" in incomingBlank, false);
   assert.equal("modelType" in incomingBlank, false);
+  assert.equal("inverterType" in incomingBlank, false);
+  assert.equal("pl" in incomingBlank, false);
   assert.equal(incomingBlank.quantity, 5);
 
   const incomingChanged = omitBlankAttributeUpdates({
     batteryType: "JIS",
     modelType: "Short Tubular",
+    inverterType: "Pure Sine Wave",
     quantity: 5,
   });
   assert.equal(incomingChanged.batteryType, "JIS");
   assert.equal(incomingChanged.modelType, "Short Tubular");
+  assert.equal(incomingChanged.inverterType, "Pure Sine Wave");
 
   const merged = { ...existing, ...incomingBlank };
   assert.equal(merged.batteryType, "DIN");
   assert.equal(merged.modelType, "Tall Tubular");
+  assert.equal(merged.inverterType, "Sine Wave");
+});
+
+test("header mapping: inverter Type / Inverter Type → inverterType, not category", () => {
+  for (const header of ["Type", " TYPE ", "TYPE", "type", "Inverter Type", "Product Type"]) {
+    assert.equal(findColumnKey(header, "Inverter"), "inverterType", header);
+  }
+  assert.notEqual(findColumnKey("Type", "Inverter"), "type");
+  assert.notEqual(findColumnKey("Type", "Inverter"), "batteryType");
+});
+
+test("TEST 7 — Inverter Type is copied from Excel as-is", async () => {
+  const file = fakeFileFromAoa([
+    ["Brand", "Model", "Type"],
+    ["Luminous", "Zelio 1100", "Pure Sine Wave"],
+  ]);
+  const { batteries, errors } = await parseBatteryExcelFile(file, { importType: "Inverter" });
+  assert.equal(batteries.length, 1, errors.join("; "));
+  assert.equal(batteries[0].type, "Inverter");
+  assert.equal(batteries[0].inverterType, "Pure Sine Wave");
+  assert.notEqual(batteries[0].inverterType, "Inverter");
+});
+
+test("TEST 8 — blank Inverter Type stays blank, not Inverter", async () => {
+  const file = fakeFileFromAoa([
+    ["Brand", "Model", "Type"],
+    ["Luminous", "Zelio 1100", ""],
+  ]);
+  const { batteries, errors } = await parseBatteryExcelFile(file, { importType: "Inverter" });
+  assert.equal(batteries.length, 1, errors.join("; "));
+  assert.equal(batteries[0].type, "Inverter");
+  assert.equal(batteries[0].inverterType, "");
+});
+
+test("TEST 9 — Battery Type column copies as-is (JIS)", async () => {
+  const file = fakeFileFromAoa([
+    ["Brand", "Model", "Battery Type"],
+    ["Exide", "TEST-CAR-3", "JIS"],
+  ]);
+  const { batteries, errors } = await parseBatteryExcelFile(file, { importType: "Car" });
+  assert.equal(batteries.length, 1, errors.join("; "));
+  assert.equal(batteries[0].type, "Car");
+  assert.equal(batteries[0].batteryType, "JIS");
+});
+
+test("TEST 10 — Home inverter Battery Type and Model Type stay independent", async () => {
+  const file = fakeFileFromAoa([
+    ["Brand", "Model", "Model Type", "Battery Type"],
+    ["Luminous", "RC18000", "Tall Tubular", "Tubular"],
+  ]);
+  const { batteries, errors } = await parseBatteryExcelFile(file, { importType: HOME_INVERTER_BATTERY_TYPE });
+  assert.equal(batteries.length, 1, errors.join("; "));
+  assert.equal(batteries[0].modelType, "Tall Tubular");
+  assert.equal(batteries[0].batteryType, "Tubular");
+  assert.notEqual(batteries[0].batteryType, batteries[0].modelType);
 });

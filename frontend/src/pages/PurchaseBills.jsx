@@ -62,6 +62,15 @@ function confOf(bill, path) {
   return Number.isFinite(n) ? n : null;
 }
 
+function lineStatus(it) {
+  const qtyMissing = it.quantity == null || it.quantity === "";
+  const rateMissing = it.rate == null || it.rate === "";
+  if (qtyMissing || rateMissing || it.needsReview || it.matchStatus === "unmatched") {
+    return { ok: false, label: "⚠ Review" };
+  }
+  return { ok: true, label: "✓" };
+}
+
 function ConfBadge({ score }) {
   if (score == null) return null;
   const low = score < 75;
@@ -551,8 +560,53 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                 bill.branchName ||
                 "—"}
             </p>
+            {bill.parseDebug && (
+              <details className="card" style={{ marginBottom: 16, padding: 12 }}>
+                <summary className="section-title" style={{ cursor: "pointer" }}>Parser debug</summary>
+                <p className="page-sub">
+                  Strategy: {bill.parseDebug.strategy || "—"} · Family: {bill.parseDebug.family || "generic"} · Words: {bill.parseDebug.wordCount ?? 0}
+                  {bill.parseDebug.usedPositional ? " · Positional table" : bill.parseDebug.fallback ? ` · Fallback: ${bill.parseDebug.fallback}` : ""}
+                </p>
+                {(bill.parseDebug.columns || []).length > 0 && (
+                  <p className="page-sub">
+                    Columns: {bill.parseDebug.columns.map((c) => `${c.key}@${c.x}`).join(" · ")}
+                  </p>
+                )}
+                <pre style={{ fontSize: 11, overflow: "auto", maxHeight: 280, whiteSpace: "pre-wrap" }}>
+                  {JSON.stringify(
+                    {
+                      usedPositional: bill.parseDebug.usedPositional,
+                      parties: bill.parseDebug.parties,
+                      manufacturer: bill.parseDebug.manufacturer,
+                      fallback: bill.parseDebug.fallback,
+                      headers: bill.parseDebug.headers,
+                      columns: bill.parseDebug.columns,
+                      tableStart: bill.parseDebug.tableStart,
+                      tableEnd: bill.parseDebug.tableEnd,
+                      tableState: bill.parseDebug.tableState,
+                      rejected: bill.parseDebug.rejected,
+                      rows: bill.parseDebug.rows,
+                      words: bill.parseDebug.words,
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+                {bill.rawOcrText && (
+                  <details>
+                    <summary>OCR text</summary>
+                    <pre style={{ fontSize: 11, whiteSpace: "pre-wrap" }}>{bill.rawOcrText}</pre>
+                  </details>
+                )}
+              </details>
+            )}
             <div className="section-title">Supplier details</div>
             <Field label="Supplier name" value={bill.supplierDetails?.name} confidence={confOf(bill, "supplierDetails.name")} onChange={(v) => patch("supplierDetails.name", v)} disabled={locked} />
+            {bill.supplierMatch && !bill.supplierMatch.matched && (
+              <div className="ocr-conf low" style={{ marginBottom: 8 }}>
+                New supplier / supplier not found
+              </div>
+            )}
             {bill.supplierMatch?.suggestedName && bill.supplierMatch.suggestedName !== bill.supplierDetails?.name && (
               <div className="ocr-conf low" style={{ marginBottom: 8 }}>
                 Possible supplier: {bill.supplierMatch.suggestedName}
@@ -591,11 +645,22 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
             <Field label="Vehicle number" value={bill.vehicleNumber} onChange={(v) => patch("vehicleNumber", v)} disabled={locked} />
             <Field label="Delivery note" value={bill.deliveryNote} onChange={(v) => patch("deliveryNote", v)} disabled={locked} />
 
-            <div className="section-title" style={{ marginTop: 16 }}>Buyer</div>
+            <div className="section-title" style={{ marginTop: 16 }}>Buyer / Bill To</div>
             <Field label="Company" value={bill.buyerDetails?.name} onChange={(v) => patch("buyerDetails.name", v)} disabled={locked} />
             <Field label="Billing address" value={bill.buyerDetails?.billingAddress || bill.buyerDetails?.address} onChange={(v) => patch("buyerDetails.billingAddress", v)} disabled={locked} />
             <Field label="Shipping address" value={bill.buyerDetails?.shippingAddress} onChange={(v) => patch("buyerDetails.shippingAddress", v)} disabled={locked} />
-            <Field label="Buyer GSTIN" value={bill.buyerDetails?.gstin} onChange={(v) => patch("buyerDetails.gstin", v)} disabled={locked} />
+            <Field label="Buyer GSTIN" value={bill.buyerDetails?.gstin} confidence={confOf(bill, "buyerDetails.gstin")} onChange={(v) => patch("buyerDetails.gstin", v)} disabled={locked} />
+
+            {(bill.manufacturerDetails?.raw || bill.parseDebug?.manufacturer?.raw) && (
+              <>
+                <div className="section-title" style={{ marginTop: 16 }}>Manufacturer / authorised distributors</div>
+                <p className="page-sub">
+                  {(bill.manufacturerDetails?.names || bill.parseDebug?.manufacturer?.names || []).join(" · ") ||
+                    bill.manufacturerDetails?.raw ||
+                    bill.parseDebug?.manufacturer?.raw}
+                </p>
+              </>
+            )}
 
             <div className="section-title" style={{ marginTop: 16 }}>Totals and taxes</div>
             <div className="grid-3">
@@ -629,6 +694,7 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                     <th>Disc.</th>
                     <th>GST %</th>
                     <th>Amount</th>
+                    <th>Status</th>
                     <th>Match</th>
                     <th></th>
                   </tr>
@@ -653,6 +719,11 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                       <td><input className="form-input" disabled={locked} type="number" value={it.discount ?? ""} onChange={(e) => patchItem(idx, "discount", e.target.value)} /></td>
                       <td><input className="form-input" disabled={locked} type="number" value={it.gstRate ?? ""} onChange={(e) => patchItem(idx, "gstRate", e.target.value)} /></td>
                       <td><input className="form-input" disabled={locked} type="number" value={it.total ?? ""} onChange={(e) => patchItem(idx, "total", e.target.value)} /></td>
+                      <td>
+                        <span className={`ocr-conf ${lineStatus(it).ok ? "ok" : "low"}`}>
+                          {it.quantity == null ? "Qty ?" : ""} {it.rate == null ? "Rate ?" : ""} {lineStatus(it).label}
+                        </span>
+                      </td>
                       <td>
                         {it.matchStatus === "matched" ? (
                           <div style={{ fontSize: 12, color: "#047857" }}>Matched: {it.matchedLabel}{it.currentStock != null ? ` (stock ${it.currentStock})` : ""}</div>

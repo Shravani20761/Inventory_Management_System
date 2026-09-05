@@ -14,6 +14,8 @@ const bikeBatterySchema = new mongoose.Schema(
     supplier: { type: String, default: "" },
     invoiceNo: { type: String, default: "" },
     notes: { type: String, default: "" },
+    /** Excel P&L cell as-is (not computed from sell − buy). */
+    pl: { type: String, default: "", trim: true },
     batteryType: { type: String, default: "", trim: true },
     voltage: { type: Number, default: 12 },
     lengthMm: { type: Number, default: 0 },

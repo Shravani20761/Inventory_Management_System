@@ -34,6 +34,8 @@ const homeInvBatterySchema = new mongoose.Schema(
     batteryBossPrice: { type: Number, default: 0 },
     supplier: { type: String, default: "" },
     invoiceNo: { type: String, default: "" },
+    /** Excel P&L cell as-is (not computed from sell − buy). */
+    pl: { type: String, default: "", trim: true },
     batteryImage: { type: String, default: "" },
     inverterImage: { type: String, default: "" },
     brandLogo: { type: String, default: "" },

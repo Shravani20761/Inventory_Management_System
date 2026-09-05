@@ -31,6 +31,8 @@ const lithiumIonBatterySchema = new mongoose.Schema(
     supplier: { type: String, default: "", trim: true },
     invoiceNo: { type: String, default: "", trim: true },
     notes: { type: String, default: "", trim: true },
+    /** Excel P&L cell as-is (not computed from sell − buy). */
+    pl: { type: String, default: "", trim: true },
     batteryImage: { type: String, default: "" },
     inverterImage: { type: String, default: "" },
     brandLogo: { type: String, default: "" },

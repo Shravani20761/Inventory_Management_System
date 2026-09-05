@@ -39,8 +39,7 @@ import {
   inventoryRowMatchesCategory,
   normalizeInventoryBrand,
   automotiveBrandDisplayLabel,
-  canonicalAutomotiveBrand,
-  isAutomotiveInventoryCategory,
+  canonicalInventoryBrand,
 } from "./constants/inventoryCategories.js";
 import { css } from "./appStyles.js";
 import { ProductImageFrames } from "./components/ProductImageFrames.jsx";
@@ -816,11 +815,27 @@ function trolleyCellStyle(col) {
   return base;
 }
 
+function formatSheetPlCell(item, extraStyle) {
+  const s = String(item?.pl ?? "").trim();
+  if (!s) return "—";
+  const n = Number(String(s).replace(/[,₹%\s]/g, ""));
+  const negative = (Number.isFinite(n) && n < 0) || /^-|loss/i.test(s);
+  return (
+    <div className={`profit-alert ${negative ? "loss" : "gain"}`} style={extraStyle}>
+      {s}
+    </div>
+  );
+}
+
 function formatInverterTableCell(col, item, serialNumber = null) {
   const key = col.key;
   let v = item[key];
   if (key === "srNo") {
     return serialNumber != null ? String(serialNumber) : "—";
+  }
+  if (key === "inverterType") {
+    const s = String(item.inverterType ?? item.technology ?? "").trim();
+    return s || "—";
   }
   if (key === "productCapacity") {
     const raw = String(item.productCapacity || "").trim();
@@ -842,16 +857,7 @@ function formatInverterTableCell(col, item, serialNumber = null) {
   if (key === "mrp") v = item.mrp ?? item.mrpFinal;
   if (key === "sellRate") v = item.sellRate ?? item.price ?? item.newRateWithOB ?? item.sellingRate;
   if (key === "pl") {
-    const buy = Number(item.dp ?? item.dpPrice ?? item.purchaseRate ?? 0);
-    const sell = Number(item.sellRate ?? item.price ?? item.newRateWithOB ?? 0);
-    const profit = sell - buy;
-    const pct = buy ? ((profit / buy) * 100).toFixed(1) : "0.0";
-    if (!buy && !sell) return "—";
-    return (
-      <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`} style={{ padding: "3px 6px", fontSize: 13, display: "inline-block" }}>
-        {profit >= 0 ? "+" : ""}₹{profit.toLocaleString("en-IN")} ({pct}%)
-      </div>
-    );
+    return formatSheetPlCell(item, { padding: "3px 6px", fontSize: 13, display: "inline-block" });
   }
   if (v === "" || v == null) return "—";
   if (col.format === "rupee") return formatRupeeOrDash(v);
@@ -964,7 +970,8 @@ function formatHomeInvBatTableCell(col, item, serialNumber = null) {
   }
   if (key === "batteryAH") v = item.batteryAH ?? item.ah ?? item.capacityAh;
   if (key === "batteryModel") v = item.batteryModel || item.model;
-  if (key === "modelType" || key === "batteryType") v = item.modelType || item.batteryType;
+  if (key === "modelType") v = item.modelType;
+  if (key === "batteryType") v = item.batteryType;
   if (key === "weight") v = item.weight ?? item.batteryWeight;
   if (key === "cd") v = item.cd ?? item.cdPrice;
   if (key === "dp") v = item.dp ?? item.dpPrice ?? item.purchaseRate ?? item.dpPlusGst;
@@ -998,6 +1005,7 @@ function inventoryFormFromItem(item, defaultTypeWhenAdding = "Car", defaultBrand
     inverterModel: "",
     batteryModel: "",
     inverterVA: "",
+    inverterType: "",
     batteryType: "",
     modelType: "",
     warranty: "",
@@ -1049,12 +1057,12 @@ function inventoryFormFromItem(item, defaultTypeWhenAdding = "Car", defaultBrand
       voltage: "",
       warranty: "",
       ...comboDefaults,
+      inverterType: "",
       batteryType: isLithiumIonBatterySection(defaultTypeWhenAdding)
         ? "Lithium Ion"
-        : isHomeInverterBatterySection(defaultTypeWhenAdding)
-          ? "Tubular"
-          : "",
+        : "",
       modelType: isHomeInverterBatterySection(defaultTypeWhenAdding) ? "Tubular" : "",
+      pl: "",
     };
   }
   const dpDisplay = item.dpPlusGst != null && item.dpPlusGst !== "" ? item.dpPlusGst : item.purchaseRate;
@@ -1088,8 +1096,9 @@ function inventoryFormFromItem(item, defaultTypeWhenAdding = "Car", defaultBrand
     inverterModel: item.inverterModel ?? "",
     batteryModel: item.batteryModel ?? item.model ?? "",
     inverterVA: item.inverterVA ?? "",
-    batteryType: item.batteryType ?? item.modelType ?? "",
-    modelType: item.modelType ?? item.batteryType ?? "",
+    inverterType: item.inverterType ?? item.technology ?? "",
+    batteryType: item.batteryType ?? "",
+    modelType: item.modelType ?? "",
     warranty: item.warranty ?? "",
     backupHours: item.backupHours ?? "",
     backupSupport: item.backupSupport ?? "",
@@ -1105,6 +1114,7 @@ function inventoryFormFromItem(item, defaultTypeWhenAdding = "Car", defaultBrand
     inverterImage: item.inverterImage ?? "",
     batteryImage: item.batteryImage ?? "",
     brandLogo: item.brandLogo ?? "",
+    pl: item.pl ?? "",
   };
 }
 
@@ -1156,8 +1166,10 @@ function mapInventoryFromServer(rows) {
       _catalogSource: row._catalogSource,
       suitableBatteryType: row.suitableBatteryType ?? row.description ?? "",
       price: row.price ?? row.sellRate ?? "",
+      inverterType: row.inverterType ?? row.technology ?? "",
       batteryType: row.batteryType ?? "",
-      modelType: row.modelType ?? row.batteryType ?? "",
+      modelType: row.modelType ?? "",
+      pl: row.pl ?? "",
     };
     return shouldShowOnHomeInvBatteryTab(mapped) ? tagHomeInvBatteryRow(mapped) : mapped;
   });
@@ -1213,16 +1225,11 @@ function mergeCategoryRowsIntoInventory(prev, categoryRows, matchesCategory) {
 /** After Excel upload, pick the brand chip that shows newly imported rows. */
 function brandFilterAfterCategoryUpload(category, uploadedBrands, activeBrandFilter) {
   if (!category?.brands?.length || !uploadedBrands?.length) return null;
-  const automotive = isAutomotiveInventoryCategory(category);
   const brands = [
     ...new Set(
       uploadedBrands
-        .map((b) => {
-          const raw = String(b ?? "").trim();
-          if (!raw) return "";
-          return automotive ? canonicalAutomotiveBrand(raw) || raw : raw;
-        })
-        .filter(Boolean),
+        .map((b) => canonicalInventoryBrand(b) || String(b ?? "").trim())
+        .filter((b) => b && normalizeInventoryBrand(b) !== "unknown"),
     ),
   ];
   if (!brands.length) return null;
@@ -1502,14 +1509,14 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
     }
 
     const uploadBrands = Array.isArray(res.uploadedBrands) ? res.uploadedBrands : [];
-    // Stay on the brand chip used for upload; only fall back to All when chip was All / Other.
-    let brandToShow = brandFilter;
-    if (!brandFilter || brandFilter === "All") {
-      brandToShow = "All";
-    } else if (brandFilter === "Other") {
-      brandToShow = pickBrandFilterShowingRows(category, sourceAfterUpload, "Other") || "Other";
-    } else {
-      brandToShow = brandFilter;
+    let brandToShow = brandFilterAfterCategoryUpload(category, uploadBrands, brandFilter);
+    if (!brandToShow) {
+      if (!brandFilter || brandFilter === "All") brandToShow = "All";
+      else if (brandFilter === "Other") {
+        brandToShow = pickBrandFilterShowingRows(category, sourceAfterUpload, "Other") || "Other";
+      } else {
+        brandToShow = brandFilter;
+      }
     }
     setBrandFilter(brandToShow);
     if (search.trim()) setSearch("");
@@ -1528,11 +1535,14 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
       inventoryRowMatchesBrandSubcategory(r, category, brandToShow),
     ).length;
 
+    const mismatchHint = (res.warnings || []).find((w) => /Excel brand detected/i.test(String(w)))
+      ? ` ${String((res.warnings || []).find((w) => /Excel brand detected/i.test(String(w)))).replace(/\n/g, " ")}`
+      : "";
     if (savedCount > 0 || (res.categoryRowCount ?? 0) > 0) {
       const brandLabel =
         brandToShow === "All" ? "All brands" : automotiveBrandDisplayLabel(category, brandToShow);
       setUploadMsg(
-        `Successfully imported ${parsed} record(s): ${inserted} new, ${updated} updated${skipped ? `, ${skipped} skipped` : ""}${failedHint}. ${visibleNow} visible under ${brandLabel}.${countHint}${dbHint}${warnHint}`,
+        `Successfully imported ${parsed} record(s): ${inserted} new, ${updated} updated${skipped ? `, ${skipped} skipped` : ""}${failedHint}. ${visibleNow} visible under ${brandLabel}.${countHint}${dbHint}${warnHint}${mismatchHint}`,
       );
     } else if (parsed > 0) {
       setUploadMsg(
@@ -1572,7 +1582,7 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
         return;
       }
       const uploadBrandChip =
-        isAutomotiveTab && brandFilter && brandFilter !== "Other" && brandFilter !== "All"
+        category.brands?.length && brandFilter && brandFilter !== "Other" && brandFilter !== "All"
           ? brandFilter
           : undefined;
       let res;
@@ -2218,11 +2228,7 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
                 {rowsForTable.map((item, index) => {
                   const serial = inventoryDisplaySerial(index);
                   const dp = item.dpPlusGst != null && item.dpPlusGst !== "" ? Number(item.dpPlusGst) : Number(item.purchaseRate ?? 0);
-                  const ob = item.newRateWithOB != null && item.newRateWithOB !== "" ? Number(item.newRateWithOB) : Number(item.sellRate ?? 0);
-                  const sellForPl = ob || Number(item.sellRate ?? 0);
                   const buyForPl = dp || Number(item.purchaseRate ?? 0);
-                  const profit = sellForPl - buyForPl;
-                  const pct = buyForPl ? ((profit / buyForPl) * 100).toFixed(1) : "0.0";
                   const capTitle = String(item.productCapacity || "").trim() || formatComboVaAhLine(item);
                   return (
                     <tr key={`inv-${String(item.id ?? "x")}-${item.model}-${item.comboId || ""}`}>
@@ -2260,11 +2266,7 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
                       <td style={{ color: "#6b7280", fontSize: 14 }}>{formatRupeeOrDash(buyForPl)}</td>
                       <td style={{ color: "#374151", fontWeight: 500, fontSize: 14 }}>{formatRupeeOrDash(item.mrp)}</td>
                       <td>
-                        <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`} style={{ padding: "3px 6px", fontSize: 13, display: "inline-block" }}>
-                          {!sellForPl
-                            ? "—"
-                            : `${profit >= 0 ? "+" : ""}₹${profit.toLocaleString("en-IN")} (${pct}%)`}
-                        </div>
+                        {formatSheetPlCell(item, { padding: "3px 6px", fontSize: 13, display: "inline-block" })}
                       </td>
                       <td>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center", maxWidth: 220 }}>
@@ -2763,7 +2765,7 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
                   <th rowSpan={2}>Sr.No.</th>
                   <th rowSpan={2} className="th-left">Model Number</th>
                   <th rowSpan={2}>Product Capacity</th>
-                  <th rowSpan={2}>TYPE</th>
+                  <th rowSpan={2}>Battery Type</th>
                   <th rowSpan={2}>Weight</th>
                   <th rowSpan={2}>Scrap Rate</th>
                   <th rowSpan={2}>Dp + GST</th>
@@ -2803,10 +2805,7 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
                   const cd = Number(item.cd ?? item.cdPrice ?? 0);
                   const ob = item.newRateWithOB != null && item.newRateWithOB !== "" ? Number(item.newRateWithOB) : Number(item.sellRate ?? 0);
                   const wo = Number(item.newRateWithoutOB ?? 0);
-                  const sellForPl = ob || Number(item.sellRate ?? 0);
                   const buyForPl = dp || Number(item.purchaseRate ?? 0);
-                  const profit = sellForPl - buyForPl;
-                  const pct = buyForPl ? ((profit / buyForPl) * 100).toFixed(1) : "0.0";
                   const sr = inventoryDisplaySerial(rowIdx);
                   const cap = item.productCapacity || (item.ah ? `${item.ah}Ah` : "—");
                   return (
@@ -2836,11 +2835,7 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
                         </span>
                       </td>
                       <td>
-                        <div className={`profit-alert ${profit >= 0 ? "gain" : "loss"}`}>
-                          {!sellForPl
-                            ? "—"
-                            : `${profit >= 0 ? "+" : ""}₹${profit.toLocaleString()} (${pct}%)`}
-                        </div>
+                        {formatSheetPlCell(item)}
                       </td>
                       <td>
                         <div className="actions-cell">
@@ -3099,8 +3094,9 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
       batteryBossPrice: Number(form.batteryBossPrice) || 0,
       comboId: String(form.comboId || "").trim(),
       inverterModel: String(form.inverterModel || "").trim(),
-      batteryType: String(form.batteryType || form.modelType || "").trim(),
-      modelType: String(form.modelType || form.batteryType || "").trim(),
+      inverterType: String(form.inverterType || "").trim(),
+      batteryType: String(form.batteryType || "").trim(),
+      modelType: String(form.modelType || "").trim(),
       warranty: String(form.warranty || "").trim(),
       suitableFor: String(form.suitableFor || "").trim(),
       comboCategory: String(form.comboCategory || "").trim(),
@@ -3174,7 +3170,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
               </div>
               <div className="grid-3">
                 <div className="form-group">
-                  <label className="form-label">Battery type</label>
+                  <label className="form-label">Battery Type</label>
                   <input className="form-input" value={form.batteryType} onChange={(e) => set("batteryType", e.target.value)} placeholder="Tubular, flat…" />
                 </div>
                 <div className="form-group">
@@ -3251,18 +3247,26 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
                   <label className="form-label">Model Type</label>
                   <input
                     className="form-input"
-                    value={form.modelType || form.batteryType}
-                    onChange={(e) => {
-                      set("modelType", e.target.value);
-                      set("batteryType", e.target.value);
-                    }}
+                    value={form.modelType}
+                    onChange={(e) => set("modelType", e.target.value)}
                     placeholder="Tall Tubular, Short Tubular…"
                   />
                 </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Warranty</label>
-                <input className="form-input" value={form.warranty} onChange={(e) => set("warranty", e.target.value)} />
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">Battery Type</label>
+                  <input
+                    className="form-input"
+                    value={form.batteryType}
+                    onChange={(e) => set("batteryType", e.target.value)}
+                    placeholder="Tubular, Flat Plate, SMF…"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Warranty</label>
+                  <input className="form-input" value={form.warranty} onChange={(e) => set("warranty", e.target.value)} />
+                </div>
               </div>
               <div style={{ fontSize: 15, fontWeight: 600, color: "#475569", margin: "12px 0 8px" }}>Pricing</div>
               <div className="grid-3">
@@ -3503,6 +3507,15 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
                 />
               </div>
               <div className="form-group">
+                <label className="form-label">Inverter Type</label>
+                <input
+                  className="form-input"
+                  value={form.inverterType}
+                  onChange={(e) => set("inverterType", e.target.value)}
+                  placeholder="Sine Wave, Square Wave, Pure Sine Wave…"
+                />
+              </div>
+              <div className="form-group">
                 <label className="form-label">Product Capacity (VA)</label>
                 <input
                   className="form-input"
@@ -3628,7 +3641,7 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
                 </div>
                 {isAutomotiveBatteryForm ? (
                   <div className="form-group">
-                    <label className="form-label">Type</label>
+                    <label className="form-label">Battery Type</label>
                     <input
                       className="form-input"
                       value={form.batteryType}

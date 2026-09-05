@@ -35,7 +35,7 @@ export const SEARCH_FORM_CONFIG = {
       { key: "brand", label: "Brand", placeholder: "Luminous" },
       { key: "inverterVA", label: "Inverter VA", placeholder: "1500", inputMode: "numeric" },
       { key: "modelNumber", label: "Model number", placeholder: "Eco Volt" },
-      { key: "technology", label: "Technology", placeholder: "Square wave" },
+      { key: "technology", label: "Inverter Type", placeholder: "Sine Wave" },
     ],
   },
   "car-battery": {

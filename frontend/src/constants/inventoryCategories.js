@@ -11,6 +11,18 @@ import {
 /** Car & bike battery brand tabs in inventory. */
 export const AUTOMOTIVE_BATTERY_BRANDS = ["Exide", "Amaron"];
 
+/** Known ERP brands → chip label. Longer needles first. */
+const KNOWN_BRAND_CANON = [
+  { canon: "SF Sonic", needles: ["sf sonic", "sf-sonic", "sfsonic"] },
+  { canon: "Livguard", needles: ["livguard", "liv guard"] },
+  { canon: "Livfast", needles: ["livfast", "liv fast", "livefast"] },
+  { canon: "Luminous", needles: ["luminous"] },
+  { canon: "Microtek", needles: ["microtek"] },
+  { canon: "Amaron", needles: ["amaron"] },
+  { canon: "Exide", needles: ["exide"] },
+  { canon: "Okaya", needles: ["okaya"] },
+];
+
 /** ERP inventory categories → brand sub-sections (same MongoDB collections, filtered in UI). */
 export const INVENTORY_CATEGORIES = [
   {
@@ -34,7 +46,7 @@ export const INVENTORY_CATEGORIES = [
     label: "Inverter",
     uploadType: "Inverter",
     searchType: "inverter",
-    brands: ["Microtek", "Exide", "Luminous", "SF Sonic"],
+    brands: ["Microtek", "Exide", "Amaron", "Luminous", "SF Sonic"],
     tableKind: "inverter",
   },
   {
@@ -42,7 +54,7 @@ export const INVENTORY_CATEGORIES = [
     label: "Battery",
     uploadType: HOME_INVERTER_BATTERY_TYPE,
     searchType: "battery",
-    brands: ["Microtek", "SF Sonic", "Exide", "Luminous", "Livfast"],
+    brands: ["Microtek", "SF Sonic", "Exide", "Amaron", "Luminous", "Livfast"],
     tableKind: "home-inv-bat",
   },
   {
@@ -90,9 +102,37 @@ export function normalizeInventoryBrand(value) {
     .replace(/\s+/g, " ");
 }
 
+function isPlaceholderBrand(value) {
+  const n = normalizeInventoryBrand(value);
+  return !n || n === "unknown" || n === "other";
+}
+
+/**
+ * Map sheet/DB brand text to a known chip label (Exide, Amaron, Luminous, Microtek, …).
+ * Unknown brands keep their original trimmed text — never rewritten to "Other" or "Unknown".
+ */
+export function canonicalInventoryBrand(rawBrand) {
+  const trimmed = String(rawBrand ?? "").trim();
+  const n = normalizeInventoryBrand(trimmed);
+  if (isPlaceholderBrand(n)) return "";
+  for (const { canon, needles } of KNOWN_BRAND_CANON) {
+    for (const needle of needles) {
+      if (n === needle || n.startsWith(needle)) return canon;
+    }
+  }
+  return trimmed;
+}
+
+/** @deprecated Use canonicalInventoryBrand — kept for car/bike call sites. */
+export function canonicalAutomotiveBrand(rawBrand) {
+  return canonicalInventoryBrand(rawBrand);
+}
+
 export function inventoryBrandMatches(rowBrand, filterBrand) {
   if (!filterBrand) return true;
-  return normalizeInventoryBrand(rowBrand) === normalizeInventoryBrand(filterBrand);
+  const a = canonicalInventoryBrand(rowBrand) || String(rowBrand ?? "").trim();
+  const b = canonicalInventoryBrand(filterBrand) || String(filterBrand ?? "").trim();
+  return normalizeInventoryBrand(a) === normalizeInventoryBrand(b);
 }
 
 /** Car/Bike tabs only — used for brand sub-section chips. */
@@ -101,20 +141,25 @@ export function isAutomotiveInventoryCategory(category) {
   return kind === "automotive-car" || kind === "automotive-bike";
 }
 
-/** Map sheet/DB brand text to Exide / Amaron for car & bike filters (display only; no DB wipe). */
-export function canonicalAutomotiveBrand(rawBrand) {
-  const n = normalizeInventoryBrand(rawBrand);
-  if (!n || n === "unknown") return "";
-  if (n.startsWith("exide")) return "Exide";
-  if (n.startsWith("amaron")) return "Amaron";
-  return String(rawBrand ?? "").trim();
-}
-
 /** Car/Bike tabs: show actual brand chip labels (Exide, Amaron, Other). */
 export function automotiveBrandDisplayLabel(category, brandFilter, { isOther = false } = {}) {
-  if (!isAutomotiveInventoryCategory(category)) return brandFilter;
   if (isOther || brandFilter === "Other") return "Other";
   return brandFilter;
+}
+
+/** Excel Category / Product Category → UI tab label (not Type/DIN). */
+export function canonicalInventoryCategoryLabel(raw) {
+  const n = normalizeInventoryBrand(raw);
+  if (!n) return "";
+  if (n === "car" || n.includes("car battery")) return "Car Battery";
+  if (n === "bike" || n.includes("bike battery")) return "Bike Battery";
+  if (n.includes("lithium")) return "Lithium Ion Battery";
+  if (n.includes("trolley")) return "Trolley";
+  if (n.includes("combo") || n.includes("inverter+battery") || n.includes("inverter + battery")) return "Combo";
+  if (n.includes("inverter battery") || n === "home inverter battery") return "Battery";
+  if (n === "inverter") return "Inverter";
+  if (n === "battery") return "Battery";
+  return "";
 }
 
 export function inventoryRowMatchesCategory(row, category) {
@@ -151,14 +196,12 @@ export function inventoryBrandCounts(rows, category) {
   if (!category?.brands?.length) return [];
   const counts = Object.fromEntries(category.brands.map((b) => [b, 0]));
   let other = 0;
-  const automotive = isAutomotiveInventoryCategory(category);
   for (const row of rows) {
-    const rb = automotive
-      ? canonicalAutomotiveBrand(row.brand) || String(row.brand ?? "").trim()
-      : String(row.brand ?? "").trim();
+    const rb = canonicalInventoryBrand(row.brand) || String(row.brand ?? "").trim();
+    if (isPlaceholderBrand(rb)) continue;
     const match = category.brands.find((b) => inventoryBrandMatches(rb, b));
     if (match) counts[match] += 1;
-    else if (rb) other += 1;
+    else other += 1;
   }
   const chips = category.brands.map((brand) => ({ brand, count: counts[brand] ?? 0 }));
   if (other > 0) chips.push({ brand: "Other", count: other, isOther: true });
@@ -167,28 +210,49 @@ export function inventoryBrandCounts(rows, category) {
 
 export function inventoryRowMatchesBrandSubcategory(row, category, brandFilter) {
   if (!category?.brands?.length || !brandFilter || brandFilter === "All") return true;
-  const automotive = isAutomotiveInventoryCategory(category);
-  const rb = automotive
-    ? canonicalAutomotiveBrand(row.brand) || String(row.brand ?? "").trim()
-    : String(row.brand ?? "").trim();
+  const rb = canonicalInventoryBrand(row.brand) || String(row.brand ?? "").trim();
   if (brandFilter === "Other") {
-    if (!rb) return false;
+    if (isPlaceholderBrand(rb)) return false;
     return !category.brands.some((b) => inventoryBrandMatches(rb, b));
   }
   return inventoryBrandMatches(rb, brandFilter);
 }
 
-/** Apply the selected Exide/Amaron chip brand to automotive Excel rows missing a known brand. */
-export function applyAutomotiveUploadBrand(rows, defaultBrand) {
-  if (!defaultBrand || !Array.isArray(rows)) return rows;
-  const chip = canonicalAutomotiveBrand(defaultBrand) || String(defaultBrand).trim();
-  if (!chip || !AUTOMOTIVE_BATTERY_BRANDS.some((b) => inventoryBrandMatches(chip, b))) return rows;
+/**
+ * Fill blank/Unknown Excel brands from the selected chip only.
+ * Never overwrite a real Excel brand (e.g. Amaron while viewing Exide).
+ */
+export function applyUploadBrand(rows, defaultBrand, categoryBrands = null) {
+  if (!Array.isArray(rows)) return rows;
+  const chipCanon = canonicalInventoryBrand(defaultBrand) || String(defaultBrand ?? "").trim();
+  const chips = Array.isArray(categoryBrands) && categoryBrands.length ? categoryBrands : AUTOMOTIVE_BATTERY_BRANDS;
+  const chipIsKnown = chipCanon && chips.some((b) => inventoryBrandMatches(chipCanon, b));
   return rows.map((row) => {
     const raw = String(row.brand ?? "").trim();
-    const empty = !raw || normalizeInventoryBrand(raw) === "unknown";
-    const canon = empty ? "" : canonicalAutomotiveBrand(raw);
-    const known = canon && AUTOMOTIVE_BATTERY_BRANDS.some((b) => inventoryBrandMatches(canon, b));
-    if (known) return { ...row, brand: canon };
-    return { ...row, brand: chip };
+    if (isPlaceholderBrand(raw)) {
+      return chipIsKnown ? { ...row, brand: chipCanon } : { ...row, brand: "" };
+    }
+    return { ...row, brand: canonicalInventoryBrand(raw) || raw };
   });
+}
+
+/** @deprecated Use applyUploadBrand. */
+export function applyAutomotiveUploadBrand(rows, defaultBrand) {
+  return applyUploadBrand(rows, defaultBrand, AUTOMOTIVE_BATTERY_BRANDS);
+}
+
+export function brandMismatchWarning(selectedBrand, excelBrands) {
+  const selected = canonicalInventoryBrand(selectedBrand) || String(selectedBrand ?? "").trim();
+  if (!selected || selected === "All" || selected === "Other") return "";
+  const detected = [
+    ...new Set(
+      (excelBrands || [])
+        .map((b) => canonicalInventoryBrand(b) || String(b ?? "").trim())
+        .filter((b) => b && !isPlaceholderBrand(b)),
+    ),
+  ];
+  if (!detected.length) return "";
+  const disagrees = detected.filter((b) => !inventoryBrandMatches(b, selected));
+  if (!disagrees.length) return "";
+  return `Selected section: ${selected}\nExcel brand detected: ${disagrees.join(", ")}\nPlease verify the import.`;
 }

@@ -8,6 +8,7 @@ const inverterSkuSchema = new mongoose.Schema(
     modelNumber: { type: String, required: true, trim: true },
     inverterVA: { type: Number, default: 0 },
     technology: { type: String, default: "", trim: true },
+    inverterType: { type: String, default: "", trim: true },
     warranty: { type: String, default: "" },
     price: { type: Number, default: 0 },
     quantity: { type: Number, default: 0, min: 0 },
@@ -16,6 +17,8 @@ const inverterSkuSchema = new mongoose.Schema(
     supplier: { type: String, default: "" },
     invoiceNo: { type: String, default: "" },
     notes: { type: String, default: "" },
+    /** Excel P&L cell as-is (not computed from sell − buy). */
+    pl: { type: String, default: "", trim: true },
     batteryImage: { type: String, default: "" },
     inverterImage: { type: String, default: "" },
     brandLogo: { type: String, default: "" },

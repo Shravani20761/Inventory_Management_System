@@ -3,7 +3,12 @@
  */
 export const INVERTER_COLUMN_MAP_ORDERED = [
   { key: "srNo", aliases: ["sr.no", "sr no", "srno", "s.no", "serial no"] },
-  { key: "brand", aliases: ["brand", "make"] },
+  { key: "brand", aliases: ["brand", "manufacturer", "make", "company", "company name", "brand name"] },
+  {
+    key: "inverterType",
+    label: "Inverter Type",
+    aliases: ["inverter type", "inv type", "type", "product type", "technology"],
+  },
   {
     key: "model",
     aliases: [
@@ -75,11 +80,15 @@ export const INVERTER_COLUMN_MAP_ORDERED = [
   { key: "flipkartPrice", aliases: ["flipkart price", "flipkart"] },
   { key: "batteryBhaiPrice", aliases: ["batterybhai price", "battery bhai", "batterybhai"] },
   { key: "batteryBossPrice", aliases: ["batteryboss price", "battery boss", "batteryboss"] },
+  {
+    key: "pl",
+    aliases: ["p&l", "p & l", "pnl", "profit & loss", "profit and loss", "profit/loss", "p/l"],
+  },
   { key: "quantity", aliases: ["quantity", "qty", "stock"] },
 ];
 
 export const INVERTER_INVENTORY_TABLE_GROUPS = [
-  { id: "details", label: "Inverter Details", span: 5 },
+  { id: "details", label: "Inverter Details", span: 6 },
   { id: "pricing", label: "Pricing", span: 3 },
   { id: "selling", label: "Selling", span: 2 },
   { id: "stock", label: "Stock", span: 1 },
@@ -89,6 +98,7 @@ export const INVERTER_INVENTORY_TABLE_COLUMNS = [
   { key: "srNo", label: "SR.NO", group: "details" },
   { key: "brand", label: "Brand", group: "details" },
   { key: "model", label: "Inverter Model Number", group: "details" },
+  { key: "inverterType", label: "Inverter Type", group: "details" },
   { key: "productCapacity", label: "Product Capacity (VA)", group: "details" },
   { key: "warranty", label: "Warranty", group: "details" },
   { key: "dp", label: "DP", format: "rupee", group: "pricing", align: "center" },

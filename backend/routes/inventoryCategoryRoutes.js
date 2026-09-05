@@ -10,7 +10,7 @@ import {
   categoryMeta,
   createCategoryInventoryRow,
 } from "../services/categoryInventoryService.js";
-import { applyAutomotiveUploadBrand } from "../shared/constants/inventoryCategories.js";
+import { applyUploadBrand, brandMismatchWarning, INVENTORY_CATEGORIES } from "../shared/constants/inventoryCategories.js";
 import InvBatteryCombo from "../models/inventory/InvBatteryCombo.js";
 import { uploadInventoryProductImage } from "../services/cloudinaryService.js";
 import { tenantFromReq, writeBranchIdFromReq } from "../utils/tenant.js";
@@ -126,10 +126,13 @@ function mountCategory(importTypeLabel, categoryKey) {
         return res.status(400).json({ error: errors?.[0] || "No valid rows found", errors, mappedColumns });
       }
       const defaultBrand = String(req.body?.defaultBrand ?? req.query?.defaultBrand ?? "").trim();
-      const importRows =
-        categoryKey === CATEGORY.CAR || categoryKey === CATEGORY.BIKE
-          ? applyAutomotiveUploadBrand(batteries, defaultBrand)
-          : batteries;
+      const categoryBrands =
+        INVENTORY_CATEGORIES.find((c) => c.uploadType === importTypeLabel)?.brands ?? null;
+      const importRows = applyUploadBrand(batteries, defaultBrand, categoryBrands);
+      const mismatch = brandMismatchWarning(
+        defaultBrand,
+        importRows.map((b) => b.brand),
+      );
       const countBefore = await countProductsInBranch(branchId);
       const mergeResult = await mergeCategoryRowsFromParsed(categoryKey, importRows, branchId, { quantityMode: "add" });
       const countAfter = await countProductsInBranch(branchId);
@@ -159,7 +162,7 @@ function mountCategory(importTypeLabel, categoryKey) {
               .filter(Boolean),
           ),
         ],
-        warnings: errors,
+        warnings: [...(errors || []), mismatch].filter(Boolean),
         failedRows,
         mappedColumns,
       });

@@ -33,6 +33,12 @@ export async function matchSupplier(details = {}, tenant = {}) {
   const q = {};
   if (tenant.branchId) q.branchId = tenant.branchId;
 
+  const phone = String(details.phone || "")
+    .replace(/[^\d]/g, "");
+  const email = String(details.email || "")
+    .trim()
+    .toLowerCase();
+
   const [bills, orders] = await Promise.all([
     PurchaseBill.find(gstin ? { ...q, "supplierDetails.gstin": gstin } : q)
       .select("supplierDetails invoiceNumber")
@@ -52,6 +58,7 @@ export async function matchSupplier(details = {}, tenant = {}) {
       name: b.supplierDetails?.name || "",
       gstin: b.supplierDetails?.gstin || "",
       phone: b.supplierDetails?.phone || "",
+      email: b.supplierDetails?.email || "",
       source: "purchase_bill",
     });
   }
@@ -73,6 +80,20 @@ export async function matchSupplier(details = {}, tenant = {}) {
       bestScore = 100;
       method = "gstin";
       break;
+    }
+    const cPhone = String(c.phone || "").replace(/[^\d]/g, "");
+    if (phone.length >= 10 && cPhone.includes(phone.slice(-10))) {
+      if (88 > bestScore) {
+        best = c;
+        bestScore = 88;
+        method = "phone";
+      }
+    }
+    const cEmail = String(c.email || "").trim().toLowerCase();
+    if (email && cEmail && email === cEmail && 92 > bestScore) {
+      best = c;
+      bestScore = 92;
+      method = "email";
     }
     const s = scoreNames(name, c.name);
     if (s > bestScore) {

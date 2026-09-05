@@ -5,7 +5,7 @@
 export const COMBO_COLUMN_MAP_ORDERED = [
   { key: "srNo", aliases: ["sr.no", "sr no", "srno", "s.no", "serial no"] },
   { key: "comboId", aliases: ["combo id", "comboid", "combo sku id"] },
-  { key: "brand", aliases: ["brand", "make"] },
+  { key: "brand", aliases: ["brand", "manufacturer", "make", "company", "company name", "brand name"] },
   { key: "inverterModel", aliases: ["inverter model number", "inverter model no", "inverter model", "inv model", "inverter name"] },
   { key: "batteryModel", aliases: ["battery model number", "battery model no", "battery model", "batt model", "battery name"] },
   {
@@ -35,7 +35,7 @@ export const COMBO_COLUMN_MAP_ORDERED = [
     ],
   },
   { key: "batteryAH", aliases: ["battery ah", "battery (ah)", "batt ah", "battery a h", "batt ah capacity"] },
-  { key: "batteryType", aliases: ["battery type", "batt type", "cell type"] },
+  { key: "batteryType", aliases: ["type", "battery type", "product type", "batt type", "cell type"] },
   { key: "warranty", aliases: ["warranty", "waranty"] },
   { key: "batteryWeight", aliases: ["battery weight", "batt weight", "battery wt"] },
   { key: "weight", aliases: ["weight", "wt", "net weight"] },
@@ -88,6 +88,10 @@ export const COMBO_COLUMN_MAP_ORDERED = [
   { key: "flipkartPrice", aliases: ["flipkart price", "flipkart"] },
   { key: "batteryBhaiPrice", aliases: ["batterybhai price", "battery bhai", "batterybhai"] },
   { key: "batteryBossPrice", aliases: ["batteryboss price", "battery boss", "batteryboss"] },
+  {
+    key: "pl",
+    aliases: ["p&l", "p & l", "pnl", "profit & loss", "profit and loss", "profit/loss", "p/l"],
+  },
   { key: "notes", aliases: ["notes", "note", "remarks", "remark"] },
   {
     key: "inverterImage",

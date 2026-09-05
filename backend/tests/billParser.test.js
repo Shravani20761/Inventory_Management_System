@@ -284,3 +284,147 @@ Grand Total 500
     assert.ok((bill.parseWarnings || []).length >= 1);
   });
 });
+
+describe("Yantrayug invoice — supplier vs buyer vs manufacturer", () => {
+  const YANTRAYUG_BILL = `
+GST INVOICE
+YANTRAYUG AUTOMOBILES
+SR NO 143 JEEVAN NAGAR TATHAWADE PUNE 411033
+Phone: 020-65368777 / 9890687777
+Email: yantrayugautomobiles@gmail.com
+GSTIN: 27AKOPP7668R1ZQ
+Invoice No: YA/24-25/118
+Date: 12/08/2025
+
+Bill to Party:
+KRISHNA SERVICES (PIMPLE SAUDAGAR) COD
+SR NO 175, FRONT OF KUNAL ICON, PIMPLE SAUDAGAR
+PUNE, MAHARASHTRA
+GSTIN: 27AKOPP3502F1Z1
+
+Authorised Distributors For:
+EXIDE INDUSTRIES LTD, JK TYRES
+& Deals in All Types of Two wheeler spares
+
+Description Qty Rate Amount
+XLTZ4A 2 4500 9000
+Grand Total 9000
+`;
+
+  it("extracts Yantrayug as supplier and Krishna as buyer", () => {
+    const bill = parsePurchaseBill(YANTRAYUG_BILL);
+    assert.equal(bill.supplierDetails.name, "YANTRAYUG AUTOMOBILES");
+    assert.equal(bill.supplierDetails.gstin, "27AKOPP7668R1ZQ");
+    assert.match(bill.supplierDetails.address, /JEEVAN NAGAR TATHAWADE/i);
+    assert.match(bill.supplierDetails.phone, /020-65368777/);
+    assert.match(bill.supplierDetails.phone, /9890687777/);
+    assert.match(bill.supplierDetails.email, /yantrayugautomobiles@gmail.com/i);
+    assert.equal(bill.buyerDetails.name, "KRISHNA SERVICES (PIMPLE SAUDAGAR) COD");
+    assert.equal(bill.buyerDetails.gstin, "27AKOPP3502F1Z1");
+    assert.equal(/COD Authorised Distributors/i.test(bill.supplierDetails.name), false);
+    assert.equal(/EXIDE/i.test(bill.supplierDetails.name), false);
+    assert.equal(/JK TYRES/i.test(bill.supplierDetails.name), false);
+    assert.match(bill.manufacturerDetails.raw, /EXIDE INDUSTRIES LTD/i);
+    assert.match(bill.manufacturerDetails.raw, /JK TYRES/i);
+  });
+
+  it("does not join COD with Authorised Distributors when OCR dumps them adjacently", () => {
+    const bill = parsePurchaseBill(`
+GST INVOICE
+YANTRAYUG AUTOMOBILES
+SR NO 143 JEEVAN NAGAR TATHAWADE PUNE 411033
+GSTIN: 27AKOPP7668R1ZQ
+Bill to Party: KRISHNA SERVICES (PIMPLE SAUDAGAR) COD Authorised Distributors For: EXIDE INDUSTRIES LTD, JK TYRES
+GSTIN: 27AKOPP3502F1Z1
+Item Qty Rate Amount
+XLTZ4A 1 100 100
+Grand Total 100
+`);
+    assert.equal(bill.supplierDetails.name, "YANTRAYUG AUTOMOBILES");
+    assert.equal(bill.supplierDetails.gstin, "27AKOPP7668R1ZQ");
+    assert.match(bill.buyerDetails.name, /KRISHNA SERVICES/i);
+    assert.equal(bill.buyerDetails.gstin, "27AKOPP3502F1Z1");
+    assert.equal(bill.supplierDetails.name, "YANTRAYUG AUTOMOBILES");
+    assert.doesNotMatch(bill.supplierDetails.name, /COD Authorised Distributors/i);
+  });
+});
+
+describe("product table boundaries — GST/footer are not products", () => {
+  const TWO_LINE_GST_BILL = `
+GST INVOICE
+YANTRAYUG AUTOMOBILES
+SR NO 143 JEEVAN NAGAR TATHAWADE PUNE 411033
+GSTIN: 27AKOPP7668R1ZQ
+Invoice No: YA-2001
+Date: 12/08/2025
+
+DisplayName    HSN Code    Qty    Rate    Disc Amt    Total
+MLDIN40 BATTERY EXIDE    85071000    2    5874.00    6.00    9358.58
+XPLORE 12XLTZ4-A    85071000    4    1350.00    36.00    2928.82
+
+GST 5%     9.00     842
+GST 12%    18.00    264
+GST 18%    221.72   1105.86
+GST 28%    0.00     0
+TOTAL               14490
+CGST 9%             842
+SGST 9%             842
+SUB TOTAL           12280
+GRAND TOTAL         14490
+Amount in Words: Fourteen Thousand Four Hundred Ninety Only
+Due Balance With This Bill 0.00
+Terms & Conditions
+Cheque Bounce Charges 500
+Bank Details HDFC 123456
+For YANTRAYUG AUTOMOBILES
+Authorized Signatory
+`;
+
+  it("keeps only the two product rows and ignores GST/footer lines", () => {
+    const bill = parsePurchaseBill(TWO_LINE_GST_BILL);
+    assert.equal(bill.items.length, 2);
+    assert.match(bill.items[0].productName, /MLDIN/i);
+    assert.equal(bill.items[0].quantity, 2);
+    assert.equal(bill.items[0].rate, 5874);
+    assert.equal(bill.items[0].discount, 6);
+    assert.match(bill.items[1].productName, /12XLTZ4/i);
+    assert.equal(bill.items[1].quantity, 4);
+    assert.equal(bill.items[1].rate, 1350);
+    assert.equal(bill.items.some((i) => /GST 5%/i.test(i.productName)), false);
+    assert.equal(bill.items.some((i) => /GRAND TOTAL/i.test(i.productName)), false);
+    assert.equal(bill.items.some((i) => /Authorized Signatory/i.test(i.productName)), false);
+    assert.equal(bill.items.some((i) => i.quantity == null || i.quantity <= 0), false);
+    assert.ok((bill.parseDebug.rejected || []).some((r) => /TAX_SUMMARY/i.test(r.reason || "")));
+  });
+
+  it("does not create a product from an HSN-only line", () => {
+    const bill = parsePurchaseBill(`
+HSN TRADERS LIMITED
+Invoice No: H-1
+Date: 01/01/2025
+Item Qty Rate Amount
+85071000 2 100 200
+Grand Total 200
+`);
+    assert.equal(bill.items.some((i) => i.productName === "85071000" || i.sku === "85071000"), false);
+  });
+
+  it("reads ten product rows and stops at taxable value", () => {
+    const rows = Array.from({ length: 10 }, (_, i) => `Cell${i + 1}X 1 100 100`).join("\n");
+    const bill = parsePurchaseBill(`
+TEN LIMITED
+Invoice No: T-10
+Date: 01/01/2025
+Item Qty Rate Amount
+${rows}
+Taxable Value 1000
+CGST 9% 90
+SGST 9% 90
+Grand Total 1180
+`);
+    assert.equal(bill.items.length, 10);
+    assert.equal(bill.cgst, 90);
+  });
+});
+
+

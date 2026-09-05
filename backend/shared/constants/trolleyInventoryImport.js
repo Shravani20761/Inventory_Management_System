@@ -50,6 +50,10 @@ export const TROLLEY_COLUMN_MAP_ORDERED = [
     aliases: ["price", "final price", "selling price", "customer price", "mrp", "max retail", "m.r.p"],
   },
   { key: "quantity", aliases: ["quantity", "qty", "stock"] },
+  {
+    key: "pl",
+    aliases: ["p&l", "p & l", "pnl", "profit & loss", "profit and loss", "profit/loss", "p/l"],
+  },
   { key: "notes", aliases: ["notes", "note", "remarks", "remark"] },
 ];
 

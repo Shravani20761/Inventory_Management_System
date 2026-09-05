@@ -112,6 +112,12 @@ export function emptyExtractedBill() {
     amountInWords: "",
     fieldConfidence: {},
     ocrConfidence: null,
+    parseDebug: null,
+    manufacturerDetails: {
+      label: "",
+      names: [],
+      raw: "",
+    },
   };
 }
 

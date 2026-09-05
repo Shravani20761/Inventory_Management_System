@@ -9,7 +9,7 @@
     "start": "node --use-system-ca index.js",
     "dev": "node --watch --use-system-ca index.js",
     "build": "node -e \"console.log('Backend: no compile step — use npm start')\"",
-    "test": "node --test tests/billParser.test.js tests/excelTypeImport.test.js tests/purchaseBranch.test.js",
+    "test": "node --test tests/billParser.test.js tests/excelTypeImport.test.js tests/excelPlImport.test.js tests/purchaseBranch.test.js tests/tableStructure.test.js tests/productMatch.test.js tests/partySection.test.js tests/productTableGuard.test.js",
     "seed": "node scripts/seed.js",
     "seed:vehicle-batteries": "node scripts/seedVehicleBatteryDemo.js",
     "seed:combo-catalog": "node scripts/seedDedicatedComboCatalog.js",

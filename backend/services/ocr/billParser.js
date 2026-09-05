@@ -1,6 +1,6 @@
 /**
- * Custom purchase-bill parser. Receives OCR/PDF text only — never calls AI.
- * Column order is detected from the bill header when present; otherwise rows are parsed from the right.
+ * Custom purchase-bill parser. Uses OCR word positions when available; never calls AI.
+ * Columns are assigned from table headers / X coordinates, not by guessing number order.
  */
 import {
   emptyExtractedBill,
@@ -10,11 +10,13 @@ import {
   isInsufficientExtraction,
 } from "./billParseHeuristics.js";
 import { normalizeBillText, splitPages, stripCurrencyNoise } from "./textNormalizer.js";
+import { aliasKey } from "./billColumns.js";
+import { collectWordsFromPages, reconstructTables, uniqueQtyRateAmount } from "./tableStructure.js";
+import { parseItemsWithStrategy } from "./parsers/index.js";
+import { extractParties } from "./partySectionParser.js";
+import { classifyInvoiceLine, isTableEndLine, hasProductEvidence, hasProductDescription } from "./productTableGuard.js";
 
 export const GSTIN_RE = /\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z])\b/i;
-const PAN_RE = /\b([A-Z]{5}[0-9]{4}[A-Z])\b/;
-const PHONE_RE = /(?:ph(?:one)?|mobile|tel|contact)[:.\s-]*([+0-9][0-9\s-]{8,16})/i;
-const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const HSN_RE = /\b(\d{4,8})\b/;
 const PAGE_SKIP =
   /(?:authorised\s+signatory|page\s+\d+\s+of|warranty\s+void|terms\s+and\s+conditions|e\.?\s*&?\s*o\.?\s*e\.?|for\s+[A-Z].*authorised)/i;
@@ -24,20 +26,6 @@ const INVOICE_LABEL =
 const DATE_LABEL = /(?:invoice\s*date|bill\s*date|dated|date)/i;
 const PO_LABEL = /(?:p\.?\s*o\.?|purchase\s*order)/i;
 const DUE_LABEL = /(?:due\s*date|payment\s*due)/i;
-
-const COL_ALIASES = {
-  sku: ["sku", "code", "item code", "product code", "part no", "part number", "model", "model no", "item no"],
-  description: ["description", "item", "product", "particulars", "goods", "description of goods", "name of product"],
-  hsn: ["hsn", "hsn/sac", "sac", "hsn code"],
-  qty: ["qty", "qty.", "quantity", "qnty", "nos", "pcs", "units"],
-  rate: ["rate", "unit rate", "price", "unit price", "purchase rate", "rate (inr)", "rate inr"],
-  discount: ["discount", "disc", "disc%", "disc %", "less"],
-  gst: ["gst", "gst%", "gst %", "gst rate", "tax", "tax%"],
-  cgst: ["cgst", "cgst%", "c gst"],
-  sgst: ["sgst", "sgst%", "s gst"],
-  igst: ["igst", "igst%", "i gst"],
-  amount: ["amount", "total", "value", "taxable value", "taxable amount", "line total", "net amount"],
-};
 
 const TOTAL_LABELS = {
   grandTotal: ["grand total", "invoice total", "total amount", "amount payable", "net amount", "total invoice value"],
@@ -140,19 +128,6 @@ function parsePercentNear(text, labels) {
   return null;
 }
 
-function aliasKey(cell) {
-  const n = String(cell || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9/%]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!n) return null;
-  for (const [key, aliases] of Object.entries(COL_ALIASES)) {
-    if (aliases.some((a) => n === a || n.includes(a))) return key;
-  }
-  return null;
-}
-
 export function detectColumnLayout(lines) {
   let best = null;
   let bestScore = 0;
@@ -212,7 +187,11 @@ function assignFromRight(tokens, layoutColumns) {
   }
   for (const { key, tok } of used) {
     if (key === "hsn") values.hsn = String(tok).replace(/\D/g, "");
-    else if (key === "qty") values.quantity = parseAmount(tok);
+    else if (key === "qty") {
+      const n = parseAmount(tok);
+      if (n != null && n > 0 && n <= 5000 && String(Math.trunc(n)).length < 6) values.quantity = n;
+      else if (/^\d{4,8}$/.test(String(tok).replace(/\D/g, ""))) values.hsn = String(tok).replace(/\D/g, "");
+    }
     else if (key === "rate") values.rate = parseAmount(tok);
     else if (key === "discount") values.discount = parseAmount(tok);
     else if (key === "gst" || key === "cgst" || key === "sgst" || key === "igst") {
@@ -231,50 +210,20 @@ function assignFromRight(tokens, layoutColumns) {
   return values;
 }
 
-function fallbackFromRight(tokens) {
-  const values = {};
-  const copy = [...tokens];
-  const takeMoney = () => {
-    while (copy.length) {
-      const tok = copy[copy.length - 1];
-      const n = parseAmount(tok.replace(/%/g, ""));
-      if (n != null && !/^\d{4,8}$/.test(tok)) {
-        copy.pop();
-        return n;
-      }
-      break;
-    }
-    return null;
-  };
-  values.total = takeMoney();
-  const maybePct = copy[copy.length - 1];
-  if (maybePct && /%$/.test(maybePct)) {
-    values.gstRate = parseAmount(maybePct);
-    copy.pop();
-  }
-  values.rate = takeMoney();
-  const qtyTok = copy[copy.length - 1];
-  if (qtyTok && /^\d{1,4}(?:\.\d+)?$/.test(qtyTok) && Number(qtyTok) > 0 && Number(qtyTok) < 5000) {
-    values.quantity = parseAmount(qtyTok);
-    copy.pop();
-  }
-  const hsnTok = copy[copy.length - 1];
-  if (hsnTok && /^\d{4,8}$/.test(hsnTok)) {
-    values.hsn = hsnTok;
-    copy.pop();
-  }
-  values.description = copy.join(" ").trim();
-  return values;
-}
-
 function looksLikeProductRow(line, hasLayout) {
   const t = String(line || "").replace(/\s+/g, " ").trim();
   if (t.length < 6 || PAGE_SKIP.test(t)) return false;
-  if (/^(?:s\.?\s*no|sr\.?|total|subtotal|cgst|sgst|igst|grand|round|hsn\/sac|description of goods)/i.test(t)) return false;
+  if (isTableEndLine(t)) return false;
+  if (/^(?:s\.?\s*no|sr\.?|hsn\/sac|description of goods)$/i.test(t)) return false;
+  const classified = classifyInvoiceLine(t);
+  if (classified.code !== "CANDIDATE") return false;
   const nums = t.match(/[0-9]+(?:\.[0-9]+)?/g) || [];
   const hasLetters = /[A-Za-z]{2}/.test(t);
-  if (hasLayout) return hasLetters && nums.length >= 1;
-  return hasLetters && nums.length >= 2;
+  if (!hasLetters) return false;
+  const descGuess = t.replace(/[0-9,.%]+/g, " ").trim();
+  if (!hasProductDescription(descGuess, t)) return false;
+  if (hasLayout) return nums.length >= 1;
+  return nums.length >= 2;
 }
 
 function toLineItem(parsed, rawLine) {
@@ -319,101 +268,88 @@ function toLineItem(parsed, rawLine) {
   return item;
 }
 
-export function extractLineItems(text, layout) {
+export function extractLineItems(text, layout, debugOut = null) {
   const lines = String(text || "").split(/\n/);
   const start = layout ? layout.index + 1 : 0;
   const items = [];
+  const rejected = [];
+  if (debugOut) {
+    debugOut.tableStart = layout ? { text: String(lines[layout.index] || "").trim() } : null;
+  }
   for (let i = start; i < lines.length; i += 1) {
     const raw = lines[i].trim();
     if (!raw) continue;
-    if (/^(?:grand\s*total|sub\s*total|invoice\s*total|taxable\s+value|amount\s+in\s+words|round\s*off|cgst\b|sgst\b|igst\b)/i.test(raw)) break;
+    const classified = classifyInvoiceLine(raw);
+    if (classified.code === "TAX_SUMMARY_SECTION" || classified.code === "TOTAL_SECTION" || classified.code === "FOOTER_SECTION") {
+      rejected.push({ text: raw, reason: classified.reason || classified.code });
+      if (debugOut) debugOut.tableEnd = { text: raw, reason: classified.reason || classified.code };
+      break;
+    }
     if (PAGE_SKIP.test(raw)) continue;
     if (!looksLikeProductRow(raw, Boolean(layout))) {
       const prev = items[items.length - 1];
-      if (prev && raw.length < 90 && /serial|batch|warranty|mfg|ah\b|12v|hsn/i.test(raw)) {
+      if (prev && raw.length < 90 && /serial|batch|warranty|mfg|ah\b|12v/i.test(raw) && !/^\d{4,8}$/.test(raw)) {
         prev.description = `${prev.description}\n${raw}`.trim();
         prev.rawDescription = `${prev.rawDescription}\n${raw}`.trim();
         const hints = parseBatteryHints(`${prev.productName} ${raw}`);
         if (!prev.capacityAh && hints.capacityAh) prev.capacityAh = hints.capacityAh;
         if (!prev.voltage && hints.voltage) prev.voltage = hints.voltage;
         if (!prev.batteryType && hints.batteryType) prev.batteryType = hints.batteryType;
+      } else {
+        rejected.push({ text: raw, reason: classified.reason || "NOT_A_PRODUCT" });
       }
       continue;
     }
     let tokens = raw.split(/\s{2,}|\t/).map((p) => p.trim()).filter(Boolean);
     if (tokens.length < 3) tokens = raw.split(/\s+/).filter(Boolean);
     if (tokens.length < 2) continue;
-    let parsed = layout?.columns?.length ? assignFromRight(tokens, layout.columns) : fallbackFromRight(tokens);
-    if (parsed.quantity == null) {
-      const fb = fallbackFromRight(raw.split(/\s+/));
-      parsed = {
-        ...fb,
-        ...parsed,
-        quantity: parsed.quantity ?? fb.quantity,
-        rate: parsed.rate ?? fb.rate,
-        total: parsed.total ?? fb.total,
-        description: parsed.description || fb.description,
-      };
+    let parsed = layout?.columns?.length ? assignFromRight(tokens, layout.columns) : { description: "" };
+    const rest = tokens.filter((t) => parseAmount(t) == null).join(" ");
+    if (!layout?.columns?.length || parsed.quantity == null) {
+      const desc = parsed.description || rest;
+      if (classifyInvoiceLine(raw).code === "CANDIDATE" && hasProductDescription(desc, raw)) {
+        const nums = tokens.map((t) => parseAmount(t)).filter((n) => n != null);
+        const inferred = uniqueQtyRateAmount(nums);
+        parsed = {
+          description: desc,
+          sku: parsed.sku,
+          hsn: parsed.hsn,
+          quantity: parsed.quantity ?? inferred?.quantity ?? null,
+          rate: parsed.rate ?? inferred?.rate ?? null,
+          total: parsed.total ?? inferred?.total ?? null,
+          discount: parsed.discount ?? null,
+          gstRate: parsed.gstRate ?? null,
+        };
+      } else {
+        parsed = { ...parsed, description: parsed.description || rest };
+      }
+    }
+    const evidence = hasProductEvidence({
+      raw,
+      description: parsed.description || parsed.sku,
+      sku: parsed.sku,
+      hsn: parsed.hsn,
+      quantity: parsed.quantity,
+      rate: parsed.rate,
+      total: parsed.total,
+    });
+    if (!evidence.ok) {
+      rejected.push({ text: raw, reason: evidence.reason || "NOT_A_PRODUCT" });
+      continue;
     }
     const item = toLineItem(parsed, raw);
-    if (!item.productName || !/[A-Za-z]{2}/.test(item.productName)) continue;
-    if (item.quantity != null && (item.quantity <= 0 || item.quantity > 9999)) continue;
+    if (!item.productName || !/[A-Za-z]{2}/.test(item.productName)) {
+      rejected.push({ text: raw, reason: "NO_PRODUCT_DESCRIPTION" });
+      continue;
+    }
+    if (item.quantity != null && (item.quantity <= 0 || item.quantity > 9999)) {
+      rejected.push({ text: raw, reason: "INVALID_QTY" });
+      continue;
+    }
     items.push(item);
   }
+  if (debugOut) debugOut.rejected = rejected;
   return items;
-}
-
-function extractSupplierAndBuyer(blob, lines) {
-  const gstins = [...blob.matchAll(new RegExp(GSTIN_RE, "gi"))].map((m) => m[1].toUpperCase());
-  const billToIdx = lines.findIndex((l) => /bill\s*to|buyer|customer\s*name|ship\s*to/i.test(l));
-  const headerLines = billToIdx > 0 ? lines.slice(0, billToIdx) : lines.slice(0, 18);
-  const headerText = headerLines.join("\n");
-  const bodyText = billToIdx > 0 ? lines.slice(billToIdx).join("\n") : blob;
-
-  const companyRe =
-    /([A-Z][A-Za-z0-9&.,' \-]{3,70}(?:Pvt\.?\s*Ltd\.?|Private\s+Limited|Ltd\.?|Limited|Industries|Distributors|Batteries|Battery|Power|Energy|Solutions))/i;
-  let supplierName =
-    (headerText.match(companyRe)?.[1] || blob.match(companyRe)?.[1] || "").replace(/\s+/g, " ").trim();
-  if (!supplierName) {
-    const top = headerLines.find(
-      (l) =>
-        /^[A-Z][A-Z0-9&.,' \-]{6,80}$/.test(l.trim()) &&
-        !/GSTIN|INVOICE|TAX\s*INVOICE|BILL\s*TO|DATE|TOTAL|DESCRIPTION|QUANTITY/i.test(l),
-    );
-    supplierName = (top || "").replace(/\s+/g, " ").trim();
-  }
-
-  const supplierGst = (headerText.match(GSTIN_RE)?.[1] || gstins[0] || "").toUpperCase();
-  let buyerGst = "";
-  const bodyGst = bodyText.match(GSTIN_RE)?.[1];
-  if (bodyGst && bodyGst.toUpperCase() !== supplierGst) buyerGst = bodyGst.toUpperCase();
-  else if (gstins[1] && gstins[1] !== supplierGst) buyerGst = gstins[1];
-
-  const addressLine = headerLines.find((l) => /\d/.test(l) && /(road|street|nagar|marg|india|state|pin)/i.test(l)) || "";
-
-  return {
-    supplierDetails: {
-      name: supplierName,
-      legalName: supplierName,
-      address: addressLine,
-      phone: (headerText.match(PHONE_RE)?.[1] || "").trim(),
-      email: (headerText.match(EMAIL_RE)?.[0] || "").trim(),
-      gstin: supplierGst,
-      pan: (headerText.match(PAN_RE)?.[1] || "").toUpperCase(),
-      state: "",
-      stateCode: supplierGst ? supplierGst.slice(0, 2) : "",
-    },
-    buyerDetails: {
-      name: "",
-      legalName: "",
-      address: "",
-      billingAddress: "",
-      shippingAddress: "",
-      gstin: buyerGst,
-      state: "",
-      stateCode: buyerGst ? buyerGst.slice(0, 2) : "",
-    },
-  };
 }
 
 function extractInvoiceMeta(blob) {
@@ -486,11 +422,20 @@ export function parsePurchaseBill(rawText, ocrMeta = {}) {
   extracted.vehicleNumber = meta.vehicleNumber;
   extracted.deliveryNote = meta.deliveryNote;
 
-  const parties = extractSupplierAndBuyer(blob, lines);
+  const layout = detectColumnLayout(lines);
+  const wordList = collectWordsFromPages(pages);
+  const parties = extractParties({ blob, lines, words: wordList });
   extracted.supplierDetails = parties.supplierDetails;
   extracted.buyerDetails = parties.buyerDetails;
-  if (extracted.supplierDetails.name) fc["supplierDetails.name"] = 72;
-  if (extracted.supplierDetails.gstin) fc["supplierDetails.gstin"] = 90;
+  extracted.manufacturerDetails = parties.manufacturerDetails;
+  if (extracted.supplierDetails.name) fc["supplierDetails.name"] = 82;
+  if (extracted.supplierDetails.gstin) fc["supplierDetails.gstin"] = 92;
+  if (extracted.buyerDetails.name) fc["buyerDetails.name"] = 78;
+  if (extracted.buyerDetails.gstin) fc["buyerDetails.gstin"] = 90;
+  if (parties.needsReview) {
+    warnings.push("Supplier was not identified confidently. Please verify.");
+    fc["supplierDetails.name"] = extracted.supplierDetails.name ? 45 : 0;
+  }
 
   const totals = extractGstTotals(blob);
   extracted.grandTotal = totals.grandTotal;
@@ -522,11 +467,46 @@ export function parsePurchaseBill(rawText, ocrMeta = {}) {
     extracted.igst = null;
   }
 
-  const layout = detectColumnLayout(lines);
-  extracted.items = extractLineItems(blob, layout);
-  if (layout) extracted.items.forEach((it) => {
-    it.fieldConfidence = { ...it.fieldConfidence, layout: 70 };
-  });
+  const table = reconstructTables(wordList);
+  const strategy = parseItemsWithStrategy(table, blob);
+  extracted.parseDebug = {
+    family: strategy.family,
+    strategy: table.debug?.strategy || "none",
+    headers: table.debug?.headers || [],
+    columns: table.debug?.columns || [],
+    rows: table.debug?.rows || [],
+    wordCount: wordList.length,
+    usedPositional: strategy.items.length > 0,
+    fallback: strategy.items.length ? null : "text-layout",
+    parties: parties.debug,
+    manufacturer: parties.manufacturerDetails,
+    tableStart: table.debug?.tableStart || null,
+    tableEnd: table.debug?.tableEnd || null,
+    tableState: table.debug?.state || null,
+    rejected: table.debug?.rejected || [],
+  };
+  if (wordList.length && wordList.length <= 400) {
+    extracted.parseDebug.words = wordList.map((w) => ({
+      text: w.text,
+      x: Math.round(w.x),
+      y: Math.round(w.y),
+      width: Math.round(w.width),
+      height: Math.round(w.height),
+      page: w.page,
+      confidence: w.confidence,
+    }));
+  }
+  const positionalOk =
+    strategy.items.length > 0 &&
+    strategy.items.every((it) => it.quantity > 0 && it.quantity <= 5000 && String(Math.trunc(Number(it.quantity))).length < 6);
+  extracted.parseDebug.usedPositional = positionalOk;
+  extracted.parseDebug.fallback = positionalOk ? null : strategy.items.length ? "text-layout" : extracted.parseDebug.fallback;
+  extracted.items = positionalOk ? strategy.items : extractLineItems(blob, layout, extracted.parseDebug);
+  if (layout && !strategy.items.length) {
+    extracted.items.forEach((it) => {
+      it.fieldConfidence = { ...it.fieldConfidence, layout: 70 };
+    });
+  }
 
   if (extracted.items.length) {
     const gstRate = totals.gstRates.igstPct
@@ -555,8 +535,13 @@ export function parsePurchaseBill(rawText, ocrMeta = {}) {
       ? Math.round(ocrBoost)
       : 0;
   extracted.parseWarnings = warnings;
-  extracted.pages = pages.map((p) => ({ page: p.page, text: p.text, confidence: p.confidence ?? null }));
-  extracted.columnLayout = layout ? layout.cells : [];
+  extracted.pages = pages.map((p) => ({
+    page: p.page,
+    text: p.text,
+    confidence: p.confidence ?? null,
+    wordCount: Array.isArray(p.words) ? p.words.length : 0,
+  }));
+  extracted.columnLayout = (table.columns || layout?.cells) ? (table.columns?.map((c) => c.key) || layout?.cells || []) : [];
   return extracted;
 }
 

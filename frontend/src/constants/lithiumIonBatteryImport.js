@@ -4,7 +4,7 @@
  */
 export const LITHIUM_ION_BATTERY_COLUMN_MAP_ORDERED = [
   { key: "srNo", aliases: ["sr.no", "sr no", "srno", "s.no", "serial no"] },
-  { key: "brand", aliases: ["brand", "make"] },
+  { key: "brand", aliases: ["brand", "manufacturer", "make", "company", "company name", "brand name"] },
   {
     key: "batteryModel",
     aliases: [
@@ -38,7 +38,7 @@ export const LITHIUM_ION_BATTERY_COLUMN_MAP_ORDERED = [
   { key: "weight", aliases: ["battery weight", "weight", "wt"] },
   {
     key: "batteryType",
-    aliases: ["battery type", "batt type", "cell type", "lithium type"],
+    aliases: ["type", "battery type", "product type", "batt type", "cell type", "lithium type"],
   },
   { key: "warranty", aliases: ["warranty", "warranty period", "warranty (months)"] },
   { key: "cd", aliases: ["cd", "cash discount", "cash discount price", "dealer cd", "cash price"] },
@@ -70,6 +70,10 @@ export const LITHIUM_ION_BATTERY_COLUMN_MAP_ORDERED = [
   { key: "flipkartPrice", aliases: ["flipkart price", "flipkart"] },
   { key: "batteryBhaiPrice", aliases: ["batterybhai price", "battery bhai", "batterybhai"] },
   { key: "batteryBossPrice", aliases: ["batteryboss price", "battery boss", "batteryboss"] },
+  {
+    key: "pl",
+    aliases: ["p&l", "p & l", "pnl", "profit & loss", "profit and loss", "profit/loss", "p/l"],
+  },
   { key: "quantity", aliases: ["quantity", "qty", "stock"] },
   { key: "supplier", aliases: ["supplier", "vendor"] },
   { key: "invoiceNo", aliases: ["invoice no", "invoice number", "purchase invoice"] },

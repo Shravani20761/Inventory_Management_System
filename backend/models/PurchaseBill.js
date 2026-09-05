@@ -129,6 +129,8 @@ const purchaseBillSchema = new mongoose.Schema(
     fieldConfidence: confidenceMap,
     ocrEngine: { type: String, default: "" },
     rawOcrText: { type: String, default: "" },
+    parseDebug: { type: mongoose.Schema.Types.Mixed, default: null },
+    manufacturerDetails: { type: mongoose.Schema.Types.Mixed, default: null },
     ocrError: { type: String, default: "" },
     pageCount: { type: Number, default: 1 },
     inventoryUpdated: { type: Boolean, default: false },

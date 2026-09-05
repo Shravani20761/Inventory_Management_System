@@ -12,6 +12,7 @@ const inverterInventoryCatalogSchema = new mongoose.Schema(
     brand: { type: String, default: "", trim: true },
     model: { type: String, required: true, trim: true },
     inverterVA: { type: Number, default: 0 },
+    inverterType: { type: String, default: "", trim: true },
     productCapacity: { type: String, default: "" },
     warranty: { type: String, default: "" },
     /** Distributor purchase price */
@@ -32,6 +33,8 @@ const inverterInventoryCatalogSchema = new mongoose.Schema(
     batteryImage: { type: String, default: "" },
     inverterImage: { type: String, default: "" },
     brandLogo: { type: String, default: "" },
+    /** Excel P&L cell as-is (not computed from sell − buy). */
+    pl: { type: String, default: "", trim: true },
   },
   { timestamps: true, collection: "inverter_inventory" },
 );

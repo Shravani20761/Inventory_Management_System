@@ -15,6 +15,7 @@ import LithiumIonBattery from "../models/inventory/LithiumIonBattery.js";
 import { branchQuery } from "../utils/branchQuery.js";
 import { enrichProductProfit } from "./profitService.js";
 import { omitBlankAttributeUpdates } from "../shared/utils/excelProductAttributes.js";
+import { canonicalInventoryBrand } from "../shared/constants/inventoryCategories.js";
 import {
   normalizeComboImportRow,
   normalizeHomeInvImportRow,
@@ -139,31 +140,28 @@ function num(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function normalizeBrandToken(value) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-/** Car/bike merge keys + saved brand — maps AMARON PRO → Amaron without deleting rows. */
-function canonicalAutomotiveBrand(rawBrand) {
-  const n = normalizeBrandToken(rawBrand);
-  if (!n || n === "unknown") return "";
-  if (n.startsWith("exide")) return "Exide";
-  if (n.startsWith("amaron")) return "Amaron";
-  return String(rawBrand ?? "").trim();
+function parseVaFromProductCapacityText(cap) {
+  const m = String(cap ?? "").match(/(\d+(?:\.\d+)?)\s*va\b/i);
+  return m ? num(m[1]) : 0;
 }
 
 function automotiveMergeBrand(row, docShape) {
   const raw = String(row.brand ?? docShape?.brand ?? "").trim();
-  const canon = canonicalAutomotiveBrand(raw);
+  const canon = canonicalInventoryBrand(raw);
   return (canon || raw).toLowerCase();
 }
 
-function parseVaFromProductCapacityText(cap) {
-  const m = String(cap ?? "").match(/(\d+(?:\.\d+)?)\s*va\b/i);
-  return m ? num(m[1]) : 0;
+function storedBrand(row) {
+  const raw = String(row.brand ?? "").trim();
+  const canon = canonicalInventoryBrand(raw);
+  if (canon) return canon;
+  if (!raw || /^(unknown|other)$/i.test(raw)) return "";
+  return raw;
+}
+
+/** Excel P&L as-is. Blank means the sheet had no P&L — do not compute sell − buy. */
+function sheetPl(row) {
+  return String(row?.pl ?? "").trim();
 }
 
 function parseAhFromProductCapacityText(cap) {
@@ -279,7 +277,9 @@ export function inverterToLegacy(d) {
     mrp: mrpN,
     quantity: num(d.quantity),
     warranty: d.warranty ?? "",
-    batteryType: d.technology ?? "",
+    inverterType: String(d.inverterType ?? d.technology ?? "").trim(),
+    technology: String(d.technology ?? d.inverterType ?? "").trim(),
+    batteryType: String(d.inverterType ?? d.technology ?? "").trim(),
     imageUrl: String(d.image ?? "").trim(),
     _inventoryCategory: CATEGORY.INVERTER,
     _catalogSource: "legacy:inverters",
@@ -316,6 +316,8 @@ export function inverterCatalogToLegacy(d) {
     mrp: mrpN,
     quantity: num(d.quantity),
     warranty: d.warranty ?? "",
+    inverterType: String(d.inverterType ?? d.technology ?? "").trim(),
+    technology: String(d.technology ?? d.inverterType ?? "").trim(),
     amazonPrice: num(d.amazonPrice),
     flipkartPrice: num(d.flipkartPrice),
     batteryBhaiPrice: num(d.batteryBhaiPrice),
@@ -473,7 +475,7 @@ export function homeInvToLegacy(d) {
     quantity: num(d.quantity),
     warranty: d.warranty ?? "",
     batteryType: d.batteryType ?? "",
-    modelType: String(d.modelType ?? d.batteryType ?? "").trim(),
+    modelType: String(d.modelType ?? "").trim(),
     amazonPrice: num(d.amazonPrice),
     flipkartPrice: num(d.flipkartPrice),
     batteryBhaiPrice: num(d.batteryBhaiPrice),
@@ -503,7 +505,7 @@ export function homeBackupBatteryCatalogToLegacy(d) {
     ah: num(d.batteryAH),
     batteryAH: num(d.batteryAH),
     batteryType: d.batteryType ?? "",
-    modelType: String(d.modelType ?? d.batteryType ?? "").trim(),
+    modelType: String(d.modelType ?? "").trim(),
     cd,
     cdPrice: cd,
     dp: dp || sell,
@@ -731,11 +733,11 @@ function rowToCarDoc(row, bid) {
   const modelNumber = String(row.model ?? row.modelName ?? "").trim() || "Unknown";
   const dp = num(row.dp ?? row.dpPrice ?? row.dpPlusGst ?? row.purchaseRate);
   const cd = num(row.cd ?? row.cdPrice);
-  const brandRaw = String(row.brand ?? "Unknown").trim() || "Unknown";
-  const brandCanon = canonicalAutomotiveBrand(brandRaw);
+  const brandRaw = String(row.brand ?? "").trim();
+  const brandCanon = storedBrand(row);
   return {
     branchId: bid,
-    brand: brandCanon || brandRaw,
+    brand: brandCanon,
     modelNumber,
     capacity: num(row.ah ?? row.capacity ?? row.capacityAh),
     productCapacity: String(row.productCapacity ?? "").trim(),
@@ -753,6 +755,7 @@ function rowToCarDoc(row, bid) {
     supplier: String(row.supplier ?? "").trim(),
     invoiceNo: String(row.invoiceNo ?? "").trim(),
     notes: String(row.notes ?? "").trim(),
+    pl: sheetPl(row),
   };
 }
 
@@ -765,11 +768,11 @@ function rowToBikeDoc(row, bid) {
     parseAhFromBatteryModelText(modelNumber);
   const sell = num(row.newRateWithOB ?? row.sellRate ?? row.sellingRate);
   const noteParts = [String(row.notes ?? "").trim(), pcStr].filter(Boolean);
-  const brandRaw = String(row.brand ?? "Unknown").trim() || "Unknown";
-  const brandCanon = canonicalAutomotiveBrand(brandRaw);
+  const brandRaw = String(row.brand ?? "").trim();
+  const brandCanon = storedBrand(row);
   return {
     branchId: bid,
-    brand: brandCanon || brandRaw,
+    brand: brandCanon,
     modelNumber,
     capacity: cap,
     warranty: String(row.warranty ?? "").trim(),
@@ -780,6 +783,7 @@ function rowToBikeDoc(row, bid) {
     invoiceNo: String(row.invoiceNo ?? "").trim(),
     notes: noteParts.join(" | "),
     batteryType: String(row.batteryType ?? "").trim(),
+    pl: sheetPl(row),
   };
 }
 
@@ -809,11 +813,12 @@ function rowToTrolleyDoc(row, bid) {
     price: sell,
     quantity: num(row.quantity) || 0,
     notes: String(row.notes ?? "").trim(),
+    pl: sheetPl(row),
   };
 }
 
 function rowToLithiumIonDoc(row, bid) {
-  const brand = String(row.brand ?? "Unknown").trim() || "Unknown";
+  const brand = storedBrand(row);
   const batteryModel = String(row.batteryModel ?? row.model ?? row.modelName ?? "").trim();
   const modelNumber = batteryModel || "Unknown";
   let voltage = num(row.voltage);
@@ -853,6 +858,7 @@ function rowToLithiumIonDoc(row, bid) {
     supplier: String(row.supplier ?? "").trim(),
     invoiceNo: String(row.invoiceNo ?? "").trim(),
     notes: String(row.notes ?? "").trim(),
+    pl: sheetPl(row),
   };
 }
 
@@ -873,11 +879,12 @@ function rowToInverterDoc(row, bid) {
   return {
     branchId: bid,
     type: "Inverter",
-    brand: row.brand ?? "Unknown",
+    brand: storedBrand(row),
     model,
     inverterVA: inva,
     productCapacity: pcStr,
     warranty: String(row.warranty ?? "").trim(),
+    inverterType: String(row.inverterType ?? row.technology ?? "").trim(),
     dp,
     cd,
     mrp: mrpN,
@@ -889,6 +896,7 @@ function rowToInverterDoc(row, bid) {
     batteryBossPrice: num(row.batteryBossPrice),
     image: String(row.image ?? row.imageUrl ?? "").trim(),
     brandDefaultImage: String(row.brandLogo ?? "").trim(),
+    pl: sheetPl(row),
   };
 }
 
@@ -926,7 +934,7 @@ function rowToInvComboDoc(row, bid) {
   const comboPriceLine = num(row.comboPrice) || withOld;
 
   let comboId = String(row.comboId ?? "").trim();
-  const brand = String(row.brand ?? "").trim();
+  const brand = storedBrand(row);
   const inverterModel = String(row.inverterModel ?? "").trim();
   const batteryModel = String(row.batteryModel ?? row.model ?? "").trim();
   if (!comboId && (inverterModel || batteryModel)) {
@@ -966,11 +974,12 @@ function rowToInvComboDoc(row, bid) {
     inverterImage: String(row.inverterImage ?? "").trim(),
     batteryImage: String(row.batteryImage ?? "").trim(),
     brandLogo: String(row.brandLogo ?? "").trim(),
+    pl: sheetPl(row),
   };
 }
 
 function rowToHomeInvDoc(row, bid) {
-  const brand = String(row.brand ?? "Unknown").trim() || "Unknown";
+  const brand = storedBrand(row);
   const ah = num(row.batteryAH ?? row.ah ?? row.capacityAH ?? row.capacityAh);
   let batteryModel = String(row.batteryModel ?? row.model ?? row.modelName ?? "").trim();
   if (!batteryModel && brand && ah) batteryModel = `${brand}-${ah}Ah`;
@@ -996,14 +1005,15 @@ function rowToHomeInvDoc(row, bid) {
     priceWithoutOld: wo,
     purchaseRate: dp,
     quantity: num(row.quantity) || 0,
-    batteryType: String(row.batteryType ?? row.modelType ?? "").trim(),
-    modelType: String(row.modelType ?? row.batteryType ?? "").trim(),
+    batteryType: String(row.batteryType ?? "").trim(),
+    modelType: String(row.modelType ?? "").trim(),
     amazonPrice: num(row.amazonPrice),
     flipkartPrice: num(row.flipkartPrice),
     batteryBhaiPrice: num(row.batteryBhaiPrice),
     batteryBossPrice: num(row.batteryBossPrice),
     supplier: String(row.supplier ?? "").trim(),
     invoiceNo: String(row.invoiceNo ?? "").trim(),
+    pl: sheetPl(row),
   };
 }
 

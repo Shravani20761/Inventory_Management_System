@@ -10,7 +10,7 @@ export const HOME_INVERTER_BATTERY_COLUMN_MAP_ORDERED = [
 
   { key: "srNo", aliases: ["sr.no", "sr no", "srno", "s.no", "serial no"] },
 
-  { key: "brand", aliases: ["brand", "make"] },
+  { key: "brand", aliases: ["brand", "manufacturer", "make", "company", "company name", "brand name"] },
 
   {
     key: "modelType",
@@ -66,7 +66,7 @@ export const HOME_INVERTER_BATTERY_COLUMN_MAP_ORDERED = [
 
   { key: "weight", aliases: ["battery weight", "weight", "wt"] },
 
-  { key: "batteryType", aliases: ["battery type", "batt type", "cell type"] },
+  { key: "batteryType", aliases: ["type", "battery type", "product type", "batt type", "cell type"] },
 
   { key: "warranty", aliases: ["warranty", "waranty"] },
 
@@ -130,6 +130,11 @@ export const HOME_INVERTER_BATTERY_COLUMN_MAP_ORDERED = [
 
   { key: "quantity", aliases: ["quantity", "qty", "stock"] },
 
+  {
+    key: "pl",
+    aliases: ["p&l", "p & l", "pnl", "profit & loss", "profit and loss", "profit/loss", "p/l"],
+  },
+
 ];
 
 
@@ -149,6 +154,8 @@ export const HOME_INVERTER_BATTERY_TABLE_COLUMNS = [
   { key: "weight", label: "Battery Weight", format: "num", group: "spec", align: "center" },
 
   { key: "modelType", label: "Model Type", group: "spec" },
+
+  { key: "batteryType", label: "Battery Type", group: "spec" },
 
   { key: "warranty", label: "Warranty", group: "warranty" },
 
@@ -172,7 +179,7 @@ export const HOME_INVERTER_BATTERY_TABLE_COLUMNS = [
 
 export const HOME_INVERTER_BATTERY_TABLE_GROUPS = [
 
-  { id: "spec", label: "Specifications", span: 6 },
+  { id: "spec", label: "Specifications", span: 7 },
 
   { id: "warranty", label: "Warranty", span: 1 },
 

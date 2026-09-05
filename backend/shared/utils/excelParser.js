@@ -12,7 +12,7 @@ import {
   isLithiumIonBatterySection,
   isTrolleySection,
 } from "../constants/inventoryTypes.js";
-import { canonicalAutomotiveBrand } from "../constants/inventoryCategories.js";
+import { canonicalInventoryBrand } from "../constants/inventoryCategories.js";
 import {
   AUTOMOTIVE_COLUMN_MAP,
   getFieldLabel,
@@ -21,8 +21,11 @@ import {
   isValidFieldKeyForImportType,
 } from "../constants/inventoryColumnMapping.js";
 import {
+  excelInverterTypeFromRow,
   excelModelTypeFromRow,
+  excelPlFromRow,
   excelProductTypeFromRow,
+  isPlColumnHeader,
   resolveInventorySectionType,
 } from "./excelProductAttributes.js";
 
@@ -105,6 +108,7 @@ const EXACT_ONLY_ALIASES = new Set([
   "model",
   "brand",
   "sku",
+  "pl",
 ]);
 
 function aliasMatchesHeader(h, alias) {
@@ -150,7 +154,11 @@ export function findColumnKey(header, importType) {
 
   // Exact header names: Type ≠ Category; Model Type ≠ Model.
   if (h === "model type" || h === "modeltype") return "modelType";
-  if (h === "type" || h === "product type") return "batteryType";
+  if (isPlColumnHeader(h)) return "pl";
+  if (isInverterOnlySection(importType) && (h === "type" || h === "product type" || h === "inverter type" || h === "inv type")) {
+    return "inverterType";
+  }
+  if (h === "type" || h === "product type" || h === "battery type") return "batteryType";
 
   if (looksLikePipeCapacitySpec(h)) return "productCapacity";
 
@@ -1140,12 +1148,8 @@ export async function parseBatteryExcelFile(file, options = {}) {
           const displayModel = isHomeInv ? battModelStored : modelRaw;
           const rawBrand = isTrolley
             ? String(item.brand || "").trim() || "Luminous"
-            : String(item.brand || "").trim() || "Unknown";
-          const forcedType = String(importType ?? "").trim();
-          const brandOut =
-            forcedType === "Car" || forcedType === "Bike" || forcedType === "Truck"
-              ? canonicalAutomotiveBrand(rawBrand) || rawBrand
-              : rawBrand;
+            : String(item.brand || "").trim();
+          const brandOut = canonicalInventoryBrand(rawBrand) || rawBrand;
 
           batteries.push({
             model: displayModel,
@@ -1166,9 +1170,12 @@ export async function parseBatteryExcelFile(file, options = {}) {
             batteryAH: batteryAHNum,
             homeSystemType: homeSys,
             inverterVA: invVA,
+            inverterType: isInvOnlyInverter ? excelInverterTypeFromRow(item) : undefined,
             batteryType: isLithiumIon
               ? String(item.batteryType || "Lithium Ion").trim()
-              : excelProductTypeFromRow(item),
+              : isInvOnlyInverter
+                ? ""
+                : excelProductTypeFromRow(item),
             warranty: String(item.warranty || "").trim(),
             inverterModel: String(item.inverterModel || "").trim(),
             batteryModel: battModelStored,
@@ -1198,6 +1205,7 @@ export async function parseBatteryExcelFile(file, options = {}) {
             batteryBhaiPrice: parseNumber(item.batteryBhaiPrice),
             batteryBossPrice: parseNumber(item.batteryBossPrice),
             notes: String(item.notes || "").trim(),
+            pl: excelPlFromRow(item),
           });
           if (!batteries[batteries.length - 1].purchaseRate && !batteries[batteries.length - 1].sellRate) {
             if (!isInvOnly || (!dp && !mrpN)) {
@@ -1257,6 +1265,7 @@ export function mergeBatteriesIntoInventory(inventory, batteries) {
       if (row.inverterVA != null) existing.inverterVA = row.inverterVA;
       if (row.batteryType) existing.batteryType = row.batteryType;
       if (row.modelType) existing.modelType = row.modelType;
+      if (row.inverterType) existing.inverterType = row.inverterType;
       if (row.warranty != null) existing.warranty = row.warranty;
       if (row.backupHours != null) existing.backupHours = row.backupHours;
       if (row.backupSupport != null) existing.backupSupport = row.backupSupport;
@@ -1280,6 +1289,7 @@ export function mergeBatteriesIntoInventory(inventory, batteries) {
         productCapacity: row.productCapacity || "",
         ah: row.ah,
         inverterVA: row.inverterVA ?? 0,
+        inverterType: row.inverterType ?? "",
         batteryType: row.batteryType ?? "",
         modelType: row.modelType ?? "",
         warranty: row.warranty ?? "",

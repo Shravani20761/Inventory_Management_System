@@ -26,6 +26,8 @@ const homeBackupBatteryInventorySchema = new mongoose.Schema(
     inverterImage: { type: String, default: "" },
     brandLogo: { type: String, default: "" },
     notes: { type: String, default: "" },
+    /** Excel P&L cell as-is (not computed from sell − buy). */
+    pl: { type: String, default: "", trim: true },
   },
   { timestamps: true, collection: "battery_inventory" },
 );

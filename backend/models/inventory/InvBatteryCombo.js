@@ -26,6 +26,8 @@ const invBatteryComboSchema = new mongoose.Schema(
     supplier: { type: String, default: "" },
     invoiceNo: { type: String, default: "" },
     notes: { type: String, default: "" },
+    /** Excel P&L cell as-is (not computed from sell − buy). */
+    pl: { type: String, default: "", trim: true },
     /** Always "Inverter+Battery" for this collection — stored for API/exports (not raw Excel "type"). */
     productCategory: { type: String, default: "Inverter+Battery", trim: true },
     /** HTTPS URLs (e.g. Cloudinary) for quotation PDFs — optional. */

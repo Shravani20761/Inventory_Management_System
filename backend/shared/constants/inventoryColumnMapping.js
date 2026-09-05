@@ -35,7 +35,7 @@ export const AUTOMOTIVE_COLUMN_MAP_ORDERED = [
       "part no",
     ],
   },
-  { key: "brand", label: "Brand", aliases: ["brand", "manufacturer", "make"] },
+  { key: "brand", label: "Brand", aliases: ["brand", "manufacturer", "make", "company", "company name", "brand name"] },
   {
     key: "sku",
     label: "SKU",
@@ -43,7 +43,7 @@ export const AUTOMOTIVE_COLUMN_MAP_ORDERED = [
   },
   {
     key: "batteryType",
-    label: "Type",
+    label: "Battery Type",
     aliases: ["type", "battery type", "product type", "batt type", "cell type"],
   },
   {
@@ -201,6 +201,11 @@ export const AUTOMOTIVE_COLUMN_MAP_ORDERED = [
   { key: "supplier", label: "Supplier", aliases: ["supplier", "vendor", "distributor", "supplier name"] },
   { key: "invoiceNo", label: "Invoice No", aliases: ["invoice", "invoice no", "invoice number", "bill no", "bill number"] },
   { key: "place", label: "Place", aliases: ["place", "location", "city"] },
+  {
+    key: "pl",
+    label: "P&L",
+    aliases: ["p&l", "p & l", "pnl", "profit & loss", "profit and loss", "profit/loss", "p/l"],
+  },
   {
     key: "imageUrl",
     label: "Image",

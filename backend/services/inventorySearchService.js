@@ -264,9 +264,10 @@ export async function searchInverterInventory(filters = {}) {
     if (brand && !ciIncludes(doc.brand, brand)) continue;
     if (vaN != null && normNum(doc.inverterVA) !== vaN) continue;
     if (modelNumber && !ciIncludes(doc.model, modelNumber)) continue;
+    if (technology && !ciIncludes(doc.inverterType ?? doc.technology, technology)) continue;
 
     const legacy = inverterCatalogToLegacy(doc);
-    const key = `inv|${normStr(doc.brand)}|${normStr(doc.model)}|${doc.inverterVA}`;
+    const key = `inv|${normStr(doc.brand)}|${normStr(doc.model)}|${doc.inverterVA}|${normStr(doc.inverterType ?? "")}`;
     pushStock(
       grouped,
       key,
@@ -276,6 +277,7 @@ export async function searchInverterInventory(filters = {}) {
         productType: "Inverter",
         va: legacy.inverterVA,
         batteryType: "",
+        inverterType: legacy.inverterType ?? "",
       },
       doc,
       branches,
@@ -287,7 +289,7 @@ export async function searchInverterInventory(filters = {}) {
     if (brand && !ciIncludes(doc.brand, brand)) continue;
     if (vaN != null && normNum(doc.inverterVA) !== vaN) continue;
     if (modelNumber && !ciIncludes(doc.modelNumber, modelNumber)) continue;
-    if (technology && !ciIncludes(doc.technology, technology)) continue;
+    if (technology && !ciIncludes(doc.technology ?? doc.inverterType, technology)) continue;
 
     const legacy = inverterToLegacy(doc);
     const key = `sku|${normStr(doc.brand)}|${normStr(doc.modelNumber)}|${doc.inverterVA}|${normStr(doc.technology)}`;

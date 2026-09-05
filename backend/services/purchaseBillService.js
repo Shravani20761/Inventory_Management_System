@@ -137,7 +137,16 @@ function applyExtract(bill, extracted, { engine, rawText, pageCount, insufficien
   bill.pageCount = pageCount || 1;
   bill.extractedSnapshot = snapshotFromBill(bill);
   bill.parseWarnings = Array.isArray(e.parseWarnings) ? e.parseWarnings : [];
-  bill.ocrPages = Array.isArray(e.pages) ? e.pages.map((p) => ({ page: p.page, confidence: p.confidence ?? null, text: p.text || "" })) : [];
+  bill.parseDebug = e.parseDebug || null;
+  bill.manufacturerDetails = e.manufacturerDetails || null;
+  bill.ocrPages = Array.isArray(e.pages)
+    ? e.pages.map((p) => ({
+        page: p.page,
+        confidence: p.confidence ?? null,
+        text: p.text || "",
+        wordCount: Array.isArray(p.words) ? p.words.length : Number(p.wordCount) || 0,
+      }))
+    : [];
   bill.financialWarnings = validatePurchaseBillMath(bill);
   if (insufficient) {
     bill.ocrStatus = OCR_STATUS.FAILED;
@@ -298,9 +307,16 @@ export async function runPurchaseBillOcr(id, { buffer, mimetype, replaceOriginal
       bill.items = await matchBillItemsToInventory(bill.items, tenant);
       const supplierHit = await matchSupplier(bill.supplierDetails, tenant);
       bill.supplierMatch = supplierHit;
-      if (supplierHit.matched && supplierHit.method === "gstin" && supplierHit.name) {
-        bill.supplierDetails = { ...(bill.supplierDetails || {}), name: supplierHit.name || bill.supplierDetails?.name };
-        if (supplierHit.phone && !bill.supplierDetails.phone) bill.supplierDetails.phone = supplierHit.phone;
+      if (supplierHit.matched && supplierHit.method === "gstin") {
+        if (supplierHit.gstin && !bill.supplierDetails?.gstin) {
+          bill.supplierDetails = { ...(bill.supplierDetails || {}), gstin: supplierHit.gstin };
+        }
+        if (supplierHit.phone && !bill.supplierDetails?.phone) {
+          bill.supplierDetails = { ...(bill.supplierDetails || {}), phone: supplierHit.phone };
+        }
+        if (!bill.supplierDetails?.name && supplierHit.name) {
+          bill.supplierDetails = { ...(bill.supplierDetails || {}), name: supplierHit.name };
+        }
       } else if (supplierHit.suggestedName && !bill.supplierDetails?.name) {
         bill.supplierDetails = { ...(bill.supplierDetails || {}), name: supplierHit.suggestedName };
       }
