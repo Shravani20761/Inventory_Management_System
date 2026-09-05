@@ -46,7 +46,7 @@ export const INVENTORY_CATEGORIES = [
     label: "Inverter",
     uploadType: "Inverter",
     searchType: "inverter",
-    brands: ["Microtek", "Exide", "Amaron", "Luminous", "SF Sonic"],
+    brands: ["Microtek", "Exide", "Luminous", "SF Sonic", "Amaron"],
     tableKind: "inverter",
   },
   {
@@ -54,7 +54,7 @@ export const INVENTORY_CATEGORIES = [
     label: "Battery",
     uploadType: HOME_INVERTER_BATTERY_TYPE,
     searchType: "battery",
-    brands: ["Microtek", "SF Sonic", "Exide", "Amaron", "Luminous", "Livfast"],
+    brands: ["Microtek", "SF Sonic", "Exide", "Luminous", "Livfast", "Amaron"],
     tableKind: "home-inv-bat",
   },
   {

@@ -2875,7 +2875,7 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
           item={editItem}
           editingMongoId={editItem?._id != null ? String(editItem._id) : null}
           defaultTypeWhenAdding={defaultTypeWhenAdding}
-          defaultBrandWhenAdding={isHomeInvBatTab || isTrolleyTab || isLithiumIonTab || isAutomotiveTab ? brandFilter : ""}
+          defaultBrandWhenAdding={isHomeInvBatTab || isInvOnlyTab || isTrolleyTab || isLithiumIonTab || isAutomotiveTab ? brandFilter : ""}
           isCarBatteryTab={isCarBatteryTab}
           onSave={handleSave}
           onClose={() => {
@@ -3220,7 +3220,12 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
               </p>
               <div className="form-group">
                 <label className="form-label">Brand</label>
-                <input className="form-input" value={form.brand} onChange={(e) => set("brand", e.target.value)} />
+                <input className="form-input" value={form.brand} onChange={(e) => set("brand", e.target.value)} list="home-inv-brand-chips" />
+                <datalist id="home-inv-brand-chips">
+                  {(getInventoryCategory("battery").brands ?? []).map((b) => (
+                    <option key={b} value={b} />
+                  ))}
+                </datalist>
               </div>
               <div className="form-group">
                 <label className="form-label">Battery model number</label>
@@ -3495,7 +3500,12 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
               </p>
               <div className="form-group">
                 <label className="form-label">Brand</label>
-                <input className="form-input" value={form.brand} onChange={(e) => set("brand", e.target.value)} placeholder="Luminous, Microtek…" />
+                <input className="form-input" value={form.brand} onChange={(e) => set("brand", e.target.value)} placeholder="Luminous, Microtek, Amaron…" list="inverter-brand-chips" />
+                <datalist id="inverter-brand-chips">
+                  {(getInventoryCategory("inverter").brands ?? []).map((b) => (
+                    <option key={b} value={b} />
+                  ))}
+                </datalist>
               </div>
               <div className="form-group">
                 <label className="form-label">Inverter Model Number</label>

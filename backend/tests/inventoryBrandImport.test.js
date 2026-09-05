@@ -61,6 +61,14 @@ test("canonical brand variants", () => {
   assert.equal(canonicalInventoryBrand("XYZ Battery"), "XYZ Battery");
 });
 
+test("Inverter and Battery chips keep previous order and include Amaron", () => {
+  assert.deepEqual(inverterTab.brands, ["Microtek", "Exide", "Luminous", "SF Sonic", "Amaron"]);
+  assert.deepEqual(batteryTab.brands, ["Microtek", "SF Sonic", "Exide", "Luminous", "Livfast", "Amaron"]);
+  assert.equal(inventoryRowMatchesBrandSubcategory({ brand: "Amaron" }, inverterTab, "Amaron"), true);
+  assert.equal(inventoryRowMatchesBrandSubcategory({ brand: "Amaron" }, batteryTab, "Amaron"), true);
+  assert.equal(inventoryRowMatchesBrandSubcategory({ brand: "Amaron" }, inverterTab, "Other"), false);
+});
+
 test("canonical category labels", () => {
   assert.equal(canonicalInventoryCategoryLabel("CAR BATTERY"), "Car Battery");
   assert.equal(canonicalInventoryCategoryLabel("Car Battery"), "Car Battery");
