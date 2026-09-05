@@ -12,6 +12,7 @@ const homeInverterBatterySchema = new mongoose.Schema(
     batteryModelNumber: { type: String, default: "", trim: true },
     productCapacityAH: { type: Number, default: 0 },
     batteryType: { type: String, default: "", trim: true },
+    modelType: { type: String, default: "", trim: true },
     withOldPrice: { type: Number, default: 0 },
     withoutOldPrice: { type: Number, default: 0 },
     warranty: { type: String, default: "" },

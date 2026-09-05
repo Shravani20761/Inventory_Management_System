@@ -3,7 +3,9 @@ import * as XLSX from "xlsx";
 const COLUMN_MAP = {
   model: ["model", "model name", "battery model", "product", "product name", "name"],
   brand: ["brand", "manufacturer", "make"],
-  type: ["type", "category", "battery type"],
+  batteryType: ["type", "battery type", "product type"],
+  type: ["category", "product category", "vehicle type"],
+  modelType: ["model type", "modeltype"],
   ah: ["ah", "capacity", "ampere", "amp", "ah capacity"],
   quantity: ["quantity", "qty", "stock", "units", "available"],
   purchaseRate: ["purchase rate", "purchase price", "buy rate", "buy price", "cost", "purchase"],
@@ -19,8 +21,10 @@ function normalizeHeader(h) {
 
 function findColumnKey(header) {
   const h = normalizeHeader(header);
+  if (h === "model type" || h === "modeltype") return "modelType";
+  if (h === "type" || h === "product type" || h === "battery type") return "batteryType";
   for (const [key, aliases] of Object.entries(COLUMN_MAP)) {
-    if (aliases.some((a) => h === a || h.includes(a))) return key;
+    if (aliases.some((a) => h === a || (a !== "type" && a !== "model" && h.includes(a)))) return key;
   }
   return null;
 }
@@ -70,7 +74,9 @@ export function parseBatteryExcel(buffer) {
     const battery = {
       model: String(item.model).trim(),
       brand: String(item.brand || "").trim() || "Unknown",
-      type: String(item.type || "Car").trim() || "Car",
+      type: String(item.type || "").trim(),
+      batteryType: String(item.batteryType || "").trim(),
+      modelType: String(item.modelType || "").trim(),
       ah: parseNumber(item.ah),
       quantity: parseNumber(item.quantity) || 1,
       purchaseRate: parseNumber(item.purchaseRate),

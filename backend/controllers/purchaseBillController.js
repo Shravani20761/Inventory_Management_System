@@ -8,16 +8,17 @@ import {
   confirmPurchaseBill,
   findDuplicateBills,
 } from "../services/purchaseBillService.js";
-import { tenantFromReq, writeBranchIdFromReq } from "../utils/tenant.js";
+import { tenantFromReq } from "../utils/tenant.js";
+import { purchaseWriteTenant } from "../utils/purchaseBranch.js";
+import PurchaseBill from "../models/PurchaseBill.js";
 
 function readTenant(req) {
   return tenantFromReq(req);
 }
 
-function writeTenant(req) {
-  const t = tenantFromReq(req);
-  const branchId = writeBranchIdFromReq(req, req.body?.branchId);
-  return { ...t, branchId };
+async function writeTenantForBill(req, billId) {
+  const peek = billId ? await PurchaseBill.findById(billId).select("branchId").lean() : null;
+  return purchaseWriteTenant(req, { fallbackBranchId: peek?.branchId });
 }
 
 export async function listPurchaseBillsController(req, res, next) {
@@ -41,7 +42,7 @@ export async function getPurchaseBillController(req, res, next) {
 export async function uploadPurchaseBillController(req, res, next) {
   try {
     if (!req.file?.buffer) return res.status(400).json({ error: "No file uploaded" });
-    const tenant = writeTenant(req);
+    const tenant = await purchaseWriteTenant(req);
     const file = {
       buffer: req.file.buffer,
       mimetype: req.file.mimetype,
@@ -61,7 +62,7 @@ export async function retryOcrController(req, res, next) {
     const bill = await retryPurchaseBillOcr(
       req.params.id,
       { buffer: req.file?.buffer, mimetype: req.file?.mimetype },
-      writeTenant(req),
+      await writeTenantForBill(req, req.params.id),
       req.user,
     );
     if (!bill) return res.status(404).json({ error: "Not found" });
@@ -73,7 +74,7 @@ export async function retryOcrController(req, res, next) {
 
 export async function manualBillController(req, res, next) {
   try {
-    const bill = await createManualPurchaseBill(req.body || {}, writeTenant(req), req.user);
+    const bill = await createManualPurchaseBill(req.body || {}, await purchaseWriteTenant(req), req.user);
     res.status(201).json(bill);
   } catch (e) {
     next(e);
@@ -82,7 +83,7 @@ export async function manualBillController(req, res, next) {
 
 export async function saveReviewController(req, res, next) {
   try {
-    const bill = await savePurchaseBillReview(req.params.id, req.body || {}, writeTenant(req), req.user);
+    const bill = await savePurchaseBillReview(req.params.id, req.body || {}, await writeTenantForBill(req, req.params.id), req.user);
     if (!bill) return res.status(404).json({ error: "Not found" });
     res.json(bill);
   } catch (e) {
@@ -92,7 +93,12 @@ export async function saveReviewController(req, res, next) {
 
 export async function confirmBillController(req, res, next) {
   try {
-    const result = await confirmPurchaseBill(req.params.id, { force: req.body?.force === true }, writeTenant(req), req.user);
+    const result = await confirmPurchaseBill(
+      req.params.id,
+      { force: req.body?.force === true },
+      await writeTenantForBill(req, req.params.id),
+      req.user,
+    );
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   } catch (e) {
@@ -110,7 +116,7 @@ export async function confirmBillController(req, res, next) {
 export async function duplicateCheckController(req, res, next) {
   try {
     const existing = await findDuplicateBills(req.body || {}, readTenant(req), req.body?.excludeId);
-    res.json({ duplicate: existing.length > 0, existing });
+    res.json({ duplicate: existing.length > 0, existing: existing });
   } catch (e) {
     next(e);
   }

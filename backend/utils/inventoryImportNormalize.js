@@ -235,5 +235,6 @@ export function normalizeHomeInvImportRow(row) {
   }
   if (isEmptyish(out.brand) && !isEmptyish(row.brand)) out.brand = row.brand;
   if (isEmptyish(out.batteryType) && !isEmptyish(row.batteryType)) out.batteryType = row.batteryType;
+  if (isEmptyish(out.modelType) && !isEmptyish(row.modelType)) out.modelType = row.modelType;
   return out;
 }

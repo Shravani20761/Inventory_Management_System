@@ -41,12 +41,15 @@ export const AUTOMOTIVE_COLUMN_MAP_ORDERED = [
     label: "SKU",
     aliases: ["sku", "product code", "item code", "product id", "item id", "sku code"],
   },
-  { key: "batteryType", label: "Battery Type", aliases: ["battery type", "batt type", "cell type"] },
+  {
+    key: "batteryType",
+    label: "Type",
+    aliases: ["type", "battery type", "product type", "batt type", "cell type"],
+  },
   {
     key: "type",
     label: "Category",
     aliases: [
-      "type",
       "category",
       "product category",
       "vehicle type",

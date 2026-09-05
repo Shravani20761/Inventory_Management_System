@@ -20,6 +20,11 @@ import {
   getAllFieldOptionsForImportType,
   isValidFieldKeyForImportType,
 } from "../constants/inventoryColumnMapping.js";
+import {
+  excelModelTypeFromRow,
+  excelProductTypeFromRow,
+  resolveInventorySectionType,
+} from "./excelProductAttributes.js";
 
 const COLUMN_MAP = AUTOMOTIVE_COLUMN_MAP;
 
@@ -143,6 +148,10 @@ export function findColumnKey(header, importType) {
   const h = normalizeHeader(header);
   if (!h) return null;
 
+  // Exact header names: Type ≠ Category; Model Type ≠ Model.
+  if (h === "model type" || h === "modeltype") return "modelType";
+  if (h === "type" || h === "product type") return "batteryType";
+
   if (looksLikePipeCapacitySpec(h)) return "productCapacity";
 
   // Scrap must win over any "… rate …" / "… price …" selling aliases.
@@ -200,7 +209,7 @@ export function findColumnKey(header, importType) {
   const autoKey = matchOrderedColumnMap(h, automotiveOrdered);
   if (autoKey) return autoKey;
 
-  if (/\bmodel\b/.test(h) && !/\bmodel\s*(year|line)\b/.test(h)) return "model";
+  if (/\bmodel\b/.test(h) && !/\bmodel\s*(year|line|type)\b/.test(h) && h !== "modeltype") return "model";
 
   if (h === "ah" || h === "a.h." || h === "(ah)" || h === "nom ah" || h === "nom. ah") return "ah";
 
@@ -297,7 +306,7 @@ function repairPipeSpecCapacityRow(row) {
     if (!cap || cap === s || !looksLikePipeCapacitySpec(cap)) {
       next.productCapacity = s;
       if (k === "ah") next.ah = "";
-      if (k === "type") next.type = "Car";
+      if (k === "type" || k === "batteryType") next[k] = "";
       break;
     }
   }
@@ -822,14 +831,9 @@ function inferProductCapacityColumnIfUnlabeled(colToKey, labels, importType) {
   return next;
 }
 
-/** @param {string} [importType] When set (not "All"), every row gets this `type` (section segregation). */
+/** Inventory section tag only (Car / Bike / …). Excel Type is read via excelProductTypeFromRow. */
 function resolveBatteryType(item, inferredBike, importType) {
-  const forced = String(importType ?? "").trim();
-  if (forced && forced.toLowerCase() !== "all") return forced;
-  const fromSheet = String(item.type || "").trim();
-  if (fromSheet) return fromSheet;
-  if (inferredBike) return "Bike";
-  return "Car";
+  return resolveInventorySectionType(item, inferredBike, importType);
 }
 
 /**
@@ -1148,6 +1152,7 @@ export async function parseBatteryExcelFile(file, options = {}) {
             comboId: String(item.comboId || "").trim(),
             brand: brandOut,
             type: resolveBatteryType(item, inferredBike, importType),
+            modelType: isHomeInv ? excelModelTypeFromRow(item) : String(item.modelType || "").trim(),
             productCapacity,
             cd: isHomeInv || isInvOnlyInverter || isTrolley || isLithiumIon || !isInvOnly ? cd : undefined,
             dp: isHomeInv || isInvOnlyInverter || isTrolley || isLithiumIon || !isInvOnly ? dp : undefined,
@@ -1163,7 +1168,7 @@ export async function parseBatteryExcelFile(file, options = {}) {
             inverterVA: invVA,
             batteryType: isLithiumIon
               ? String(item.batteryType || "Lithium Ion").trim()
-              : String(item.batteryType || "").trim(),
+              : excelProductTypeFromRow(item),
             warranty: String(item.warranty || "").trim(),
             inverterModel: String(item.inverterModel || "").trim(),
             batteryModel: battModelStored,
@@ -1250,7 +1255,8 @@ export function mergeBatteriesIntoInventory(inventory, batteries) {
       if (row.inverterModel != null) existing.inverterModel = row.inverterModel;
       if (row.batteryModel != null) existing.batteryModel = row.batteryModel;
       if (row.inverterVA != null) existing.inverterVA = row.inverterVA;
-      if (row.batteryType != null) existing.batteryType = row.batteryType;
+      if (row.batteryType) existing.batteryType = row.batteryType;
+      if (row.modelType) existing.modelType = row.modelType;
       if (row.warranty != null) existing.warranty = row.warranty;
       if (row.backupHours != null) existing.backupHours = row.backupHours;
       if (row.backupSupport != null) existing.backupSupport = row.backupSupport;
@@ -1275,6 +1281,7 @@ export function mergeBatteriesIntoInventory(inventory, batteries) {
         ah: row.ah,
         inverterVA: row.inverterVA ?? 0,
         batteryType: row.batteryType ?? "",
+        modelType: row.modelType ?? "",
         warranty: row.warranty ?? "",
         inverterModel: row.inverterModel ?? "",
         batteryModel: row.batteryModel ?? "",

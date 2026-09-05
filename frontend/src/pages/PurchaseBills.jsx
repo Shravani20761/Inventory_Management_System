@@ -1,7 +1,58 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
+import { useAuth } from "../context/AuthContext.jsx";
+import { useBranch } from "../context/BranchContext.jsx";
 
 const ACCEPT = "image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf";
+
+function formatBranchLabel(branch) {
+  if (!branch) return "";
+  const loc = String(branch.name || branch.branchName || "").trim();
+  const biz = String(branch.businessName || "").trim();
+  if (loc && biz) return `${loc} — ${biz}`;
+  return loc || biz;
+}
+
+function PurchaseBranchField({ isHq, purchaseBranchId, onChange, branches, assignedBranch, user, disabled }) {
+  const options = (branches || []).filter((b) => b.id && b.id !== "all");
+  const assignedLabel =
+    formatBranchLabel(assignedBranch) ||
+    formatBranchLabel({
+      name: user?.branchName,
+      businessName: user?.businessName,
+    }) ||
+    user?.branchName ||
+    "";
+
+  return (
+    <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-4">
+      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sky-800">Purchase Branch</label>
+      {isHq ? (
+        <>
+          <select
+            className="w-full max-w-md rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm font-medium text-slate-800"
+            value={purchaseBranchId || ""}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={disabled}
+          >
+            <option value="">Select Branch</option>
+            {options.map((b) => (
+              <option key={b.id} value={b.id}>
+                {formatBranchLabel(b) || b.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-xs text-sky-800/80">This purchase will be recorded against one branch. “All Branches” cannot be used.</p>
+        </>
+      ) : assignedLabel ? (
+        <p className="text-sm font-semibold text-slate-800">{assignedLabel}</p>
+      ) : (
+        <p className="text-sm text-rose-700">Your account is not assigned to a branch. Please contact an administrator.</p>
+      )}
+    </div>
+  );
+}
+
 const PENDING_STATUSES = new Set(["Uploaded", "Processing"]);
 const LOCKED_STATUSES = new Set(["Confirmed", "Inventory Updated"]);
 
@@ -56,6 +107,8 @@ function emptyItem() {
     matchStatus: "unmatched",
     productId: "",
     createNewProduct: false,
+    suggestedMatches: [],
+    needsReview: true,
   };
 }
 
@@ -68,7 +121,15 @@ function lineMathWarning(it) {
   return "";
 }
 
-export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefresh, user }) {
+export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefresh, user: userProp }) {
+  const { user: authUser } = useAuth();
+  const user = userProp || authUser;
+  const { isHq, branches, selectedBranchId } = useBranch();
+  const assignedBranch = useMemo(
+    () => (user?.branchId ? branches.find((b) => String(b.id || b._id) === String(user.branchId)) : null),
+    [branches, user?.branchId],
+  );
+  const [purchaseBranchId, setPurchaseBranchId] = useState("");
   const [view, setView] = useState("history");
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -112,6 +173,13 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!isHq) return;
+    if (selectedBranchId && selectedBranchId !== "all") {
+      setPurchaseBranchId((prev) => prev || selectedBranchId);
+    }
+  }, [isHq, selectedBranchId]);
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -161,12 +229,44 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
     }, "image/jpeg", 0.92);
   };
 
+  const hqBranchPayload = () => (isHq && purchaseBranchId ? { branchId: purchaseBranchId } : {});
+
+  const assertPurchaseBranchReady = () => {
+    if (isHq && !purchaseBranchId) {
+      setMsg("Select the branch for this purchase before uploading the bill.");
+      return false;
+    }
+    if (!isHq && !user?.branchId) {
+      setMsg("Your account is not assigned to a branch. Please contact an administrator.");
+      return false;
+    }
+    return true;
+  };
+
+  const onPurchaseBranchChange = (id) => {
+    setPurchaseBranchId(id);
+    if (isHq && bill && !LOCKED_STATUSES.has(bill.ocrStatus)) {
+      const opt = branches.find((b) => String(b.id || b._id) === String(id));
+      setBill((b) =>
+        b
+          ? {
+              ...b,
+              branchId: id,
+              branchName: opt?.name || opt?.branchName || b.branchName,
+              businessName: opt?.businessName || b.businessName,
+            }
+          : b,
+      );
+    }
+  };
+
   const processFile = async (file) => {
     if (!file) return;
+    if (!assertPurchaseBranchReady()) return;
     setProcessing(true);
     setMsg("");
     try {
-      const created = await api.purchaseBills.upload(file);
+      const created = await api.purchaseBills.upload(file, hqBranchPayload());
       setBill(created);
       setView("review");
       const done = PENDING_STATUSES.has(created.ocrStatus)
@@ -185,7 +285,9 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
 
   const openBill = async (id) => {
     try {
-      setBill(await api.purchaseBills.get(id));
+      const next = await api.purchaseBills.get(id);
+      setBill(next);
+      if (isHq && next?.branchId) setPurchaseBranchId(String(next.branchId));
       setView("review");
     } catch (e) {
       setMsg(e.message || "Failed to open bill");
@@ -217,12 +319,13 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
   const saveReview = async () => {
     if (!bill?.id && !bill?._id) return;
     const id = bill.id || bill._id;
-    const saved = await api.purchaseBills.save(id, bill);
+    const saved = await api.purchaseBills.save(id, { ...bill, ...hqBranchPayload() });
     setBill(saved);
     return saved;
   };
 
   const confirm = async (force = false) => {
+    if (!assertPurchaseBranchReady()) return;
     try {
       await saveReview();
       if (!force) {
@@ -236,7 +339,7 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
         }
       }
       const id = bill.id || bill._id;
-      const result = await api.purchaseBills.confirm(id, { force });
+      const result = await api.purchaseBills.confirm(id, { force, ...hqBranchPayload() });
       setBill(result.bill);
       setDupModal(null);
       const changes = result.inventoryChanges || result.bill?.inventoryChanges || [];
@@ -262,7 +365,7 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
     if (!id || !file) return;
     setProcessing(true);
     try {
-      const started = await api.purchaseBills.retryOcr(id, file);
+      const started = await api.purchaseBills.retryOcr(id, file, hqBranchPayload());
       const done = PENDING_STATUSES.has(started.ocrStatus) ? await api.purchaseBills.waitForOcr(id) : started;
       setBill(done);
     } catch (e) {
@@ -273,18 +376,34 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
   };
 
   const startManual = async () => {
+    if (!assertPurchaseBranchReady()) return;
     const created = await api.purchaseBills.manual({
       invoiceNumber: "",
       supplierDetails: { name: "" },
       items: [emptyItem()],
+      ...hqBranchPayload(),
     });
     setBill(created);
+    if (isHq && created?.branchId) setPurchaseBranchId(String(created.branchId));
     setView("review");
   };
 
   const locked = LOCKED_STATUSES.has(bill?.ocrStatus);
   const failed = bill?.ocrStatus === "Failed";
   const inProgress = processing || PENDING_STATUSES.has(bill?.ocrStatus);
+  const branchField = (
+    <div style={{ marginBottom: 12 }}>
+      <PurchaseBranchField
+        isHq={isHq}
+        purchaseBranchId={purchaseBranchId}
+        onChange={onPurchaseBranchChange}
+        branches={branches}
+        assignedBranch={assignedBranch}
+        user={user}
+        disabled={Boolean(bill) && locked}
+      />
+    </div>
+  );
 
   const previewSrc = bill?.originalFileUrl || previewUrl;
   const isPdfPreview = (file) =>
@@ -304,6 +423,7 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
           </button>
         </div>
         {msg && <div className="card" style={{ marginBottom: 12 }}>{msg}</div>}
+        {branchField}
         <div className="ocr-review">
           <div className="card ocr-preview">
             <div className="section-title">Original bill</div>
@@ -336,7 +456,11 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
             <div className="page-title">Purchase Bill Review</div>
             <div className="page-sub">
               {bill.ocrStatus} · {bill.ocrEngine || "OCR"} · {bill.originalFileName || "Uploaded bill"}
-              {bill.branchName ? ` · ${bill.branchName}` : ""}
+              {formatBranchLabel({ name: bill.branchName, businessName: bill.businessName })
+                ? ` · ${formatBranchLabel({ name: bill.branchName, businessName: bill.businessName })}`
+                : bill.branchName
+                  ? ` · ${bill.branchName}`
+                  : ""}
             </div>
           </div>
           <div>
@@ -351,12 +475,14 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
           </div>
         </div>
         {msg && <div className="card" style={{ marginBottom: 12 }}>{msg}</div>}
+        {branchField}
         {inProgress && (
           <div className="card" style={{ marginBottom: 12 }}>Processing purchase bill… extracting all pages. Inventory is not updated yet.</div>
         )}
         {failed && (
           <div className="card" style={{ marginBottom: 12, borderLeft: "4px solid #dc2626" }}>
-            <strong>Unable to extract sufficient information from this bill.</strong>
+            <strong>OCR could not reliably read this bill. You can enter the purchase manually.</strong>
+            <div className="page-sub" style={{ marginTop: 6 }}>{bill.ocrError}</div>
             <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
               <label className="btn btn-secondary">
                 Retry OCR
@@ -418,8 +544,30 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
             )}
           </div>
           <div className="card ocr-fields">
+            <div className="section-title">Purchase Branch</div>
+            <p className="page-sub" style={{ marginTop: -4, marginBottom: 12 }}>
+              {formatBranchLabel({ name: bill.branchName, businessName: bill.businessName }) ||
+                formatBranchLabel(assignedBranch) ||
+                bill.branchName ||
+                "—"}
+            </p>
             <div className="section-title">Supplier details</div>
             <Field label="Supplier name" value={bill.supplierDetails?.name} confidence={confOf(bill, "supplierDetails.name")} onChange={(v) => patch("supplierDetails.name", v)} disabled={locked} />
+            {bill.supplierMatch?.suggestedName && bill.supplierMatch.suggestedName !== bill.supplierDetails?.name && (
+              <div className="ocr-conf low" style={{ marginBottom: 8 }}>
+                Possible supplier: {bill.supplierMatch.suggestedName}
+                {!locked && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    style={{ marginLeft: 8 }}
+                    onClick={() => patch("supplierDetails.name", bill.supplierMatch.suggestedName)}
+                  >
+                    Use this
+                  </button>
+                )}
+              </div>
+            )}
             <Field label="Legal name" value={bill.supplierDetails?.legalName} onChange={(v) => patch("supplierDetails.legalName", v)} disabled={locked} />
             <Field label="GSTIN" value={bill.supplierDetails?.gstin} confidence={confOf(bill, "supplierDetails.gstin")} onChange={(v) => patch("supplierDetails.gstin", v)} disabled={locked} />
             <Field label="Address" value={bill.supplierDetails?.address} onChange={(v) => patch("supplierDetails.address", v)} disabled={locked} />
@@ -478,14 +626,16 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                     <th>HSN</th>
                     <th>Qty</th>
                     <th>Rate</th>
+                    <th>Disc.</th>
                     <th>GST %</th>
                     <th>Amount</th>
                     <th>Match</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {(bill.items || []).map((it, idx) => (
-                    <tr key={it._id || idx}>
+                    <tr key={it._id || idx} className={it.needsReview || it.matchStatus === "unmatched" ? "ocr-row-review" : ""}>
                       <td>
                         <input className="form-input" disabled={locked} value={it.productName || ""} onChange={(e) => patchItem(idx, "productName", e.target.value)} />
                         <input className="form-input" disabled={locked} placeholder="Brand" style={{ marginTop: 4 }} value={it.brand || ""} onChange={(e) => patchItem(idx, "brand", e.target.value)} />
@@ -500,13 +650,36 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                       <td><input className="form-input" disabled={locked} value={it.hsn || ""} onChange={(e) => patchItem(idx, "hsn", e.target.value)} /></td>
                       <td><input className="form-input" disabled={locked} type="number" value={it.quantity ?? ""} onChange={(e) => patchItem(idx, "quantity", e.target.value)} /></td>
                       <td><input className="form-input" disabled={locked} type="number" value={it.rate ?? ""} onChange={(e) => patchItem(idx, "rate", e.target.value)} /></td>
+                      <td><input className="form-input" disabled={locked} type="number" value={it.discount ?? ""} onChange={(e) => patchItem(idx, "discount", e.target.value)} /></td>
                       <td><input className="form-input" disabled={locked} type="number" value={it.gstRate ?? ""} onChange={(e) => patchItem(idx, "gstRate", e.target.value)} /></td>
                       <td><input className="form-input" disabled={locked} type="number" value={it.total ?? ""} onChange={(e) => patchItem(idx, "total", e.target.value)} /></td>
                       <td>
                         {it.matchStatus === "matched" ? (
                           <div style={{ fontSize: 12, color: "#047857" }}>Matched: {it.matchedLabel}{it.currentStock != null ? ` (stock ${it.currentStock})` : ""}</div>
                         ) : (
-                          <div style={{ fontSize: 12, color: "#b45309" }}>No match found</div>
+                          <div className="ocr-conf low">Needs Review — Product not confidently matched</div>
+                        )}
+                        {(it.suggestedMatches || []).length > 0 && !it.productId && (
+                          <div style={{ fontSize: 12, margin: "4px 0" }}>
+                            {it.suggestedMatches.slice(0, 3).map((s) => (
+                              <button
+                                key={s.id}
+                                type="button"
+                                className="btn btn-sm btn-secondary"
+                                style={{ margin: "2px 4px 2px 0" }}
+                                disabled={locked}
+                                onClick={() => {
+                                  patchItem(idx, "productId", s.id);
+                                  patchItem(idx, "matchStatus", "manual");
+                                  patchItem(idx, "matchedLabel", s.label);
+                                  patchItem(idx, "needsReview", false);
+                                  patchItem(idx, "createNewProduct", false);
+                                }}
+                              >
+                                Possible match: {s.label}
+                              </button>
+                            ))}
+                          </div>
                         )}
                         <select
                           className="form-select"
@@ -516,8 +689,9 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                             const id = e.target.value;
                             const opt = catalogOptions.find((o) => o.id === id);
                             patchItem(idx, "productId", id);
-                            patchItem(idx, "matchStatus", id ? "manual" : "new");
+                            patchItem(idx, "matchStatus", id ? "manual" : "unmatched");
                             patchItem(idx, "matchedLabel", opt?.label || "");
+                            patchItem(idx, "needsReview", !id);
                             patchItem(idx, "createNewProduct", false);
                           }}
                         >
@@ -531,10 +705,24 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                             <input
                               type="checkbox"
                               checked={Boolean(it.createNewProduct)}
-                              onChange={(e) => patchItem(idx, "createNewProduct", e.target.checked)}
+                              onChange={(e) => {
+                                patchItem(idx, "createNewProduct", e.target.checked);
+                                if (e.target.checked) patchItem(idx, "needsReview", false);
+                              }}
                             />
                             Create New Product
                           </label>
+                        )}
+                      </td>
+                      <td>
+                        {!locked && (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-danger"
+                            onClick={() => setBill((b) => ({ ...b, items: (b.items || []).filter((_, i) => i !== idx) }))}
+                          >
+                            Remove
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -607,6 +795,7 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
         </div>
       </div>
       {msg && <div className="card" style={{ marginBottom: 12 }}>{msg}</div>}
+      {branchField}
       {processing && <div className="card" style={{ marginBottom: 12 }}>Processing purchase bill… extracting all pages. Inventory is not updated yet.</div>}
 
       {cameraOpen && (
@@ -653,7 +842,7 @@ export function PurchaseBillsModule({ inventory = [], apiOnline, onInventoryRefr
                     <td>{b.supplierName || b.supplierDetails?.name || "—"}</td>
                     <td>{b.invoiceDate || "—"}</td>
                     <td>₹{Number(b.grandTotal || 0).toLocaleString("en-IN")}</td>
-                    <td>{b.branchName || "—"}</td>
+                    <td>{formatBranchLabel({ name: b.branchName, businessName: b.businessName }) || b.branchName || "—"}</td>
                     <td>{b.createdByName || user?.name || "—"}</td>
                     <td><span className="badge badge-blue">{b.ocrStatus}</span></td>
                     <td>{b.inventoryUpdated ? "Inventory updated" : b.ocrStatus === "Confirmed" ? "Confirmed" : "Pending confirm"}</td>

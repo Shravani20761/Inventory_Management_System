@@ -14,6 +14,7 @@ import TrolleyInventory from "../models/inventory/TrolleyInventory.js";
 import LithiumIonBattery from "../models/inventory/LithiumIonBattery.js";
 import { branchQuery } from "../utils/branchQuery.js";
 import { enrichProductProfit } from "./profitService.js";
+import { omitBlankAttributeUpdates } from "../shared/utils/excelProductAttributes.js";
 import {
   normalizeComboImportRow,
   normalizeHomeInvImportRow,
@@ -248,6 +249,7 @@ export function bikeToLegacy(d) {
     newRateWithOB: sell,
     quantity: num(d.quantity),
     warranty: d.warranty ?? "",
+    batteryType: d.batteryType ?? "",
     _inventoryCategory: CATEGORY.BIKE,
   };
 }
@@ -471,6 +473,7 @@ export function homeInvToLegacy(d) {
     quantity: num(d.quantity),
     warranty: d.warranty ?? "",
     batteryType: d.batteryType ?? "",
+    modelType: String(d.modelType ?? d.batteryType ?? "").trim(),
     amazonPrice: num(d.amazonPrice),
     flipkartPrice: num(d.flipkartPrice),
     batteryBhaiPrice: num(d.batteryBhaiPrice),
@@ -499,7 +502,8 @@ export function homeBackupBatteryCatalogToLegacy(d) {
     capacityAh: num(d.batteryAH),
     ah: num(d.batteryAH),
     batteryAH: num(d.batteryAH),
-    batteryType: d.batteryType ?? "Tubular",
+    batteryType: d.batteryType ?? "",
+    modelType: String(d.modelType ?? d.batteryType ?? "").trim(),
     cd,
     cdPrice: cd,
     dp: dp || sell,
@@ -775,6 +779,7 @@ function rowToBikeDoc(row, bid) {
     supplier: String(row.supplier ?? "").trim(),
     invoiceNo: String(row.invoiceNo ?? "").trim(),
     notes: noteParts.join(" | "),
+    batteryType: String(row.batteryType ?? "").trim(),
   };
 }
 
@@ -991,7 +996,8 @@ function rowToHomeInvDoc(row, bid) {
     priceWithoutOld: wo,
     purchaseRate: dp,
     quantity: num(row.quantity) || 0,
-    batteryType: String(row.batteryType ?? "").trim(),
+    batteryType: String(row.batteryType ?? row.modelType ?? "").trim(),
+    modelType: String(row.modelType ?? row.batteryType ?? "").trim(),
     amazonPrice: num(row.amazonPrice),
     flipkartPrice: num(row.flipkartPrice),
     batteryBhaiPrice: num(row.batteryBhaiPrice),
@@ -1123,9 +1129,11 @@ function assertHomeInvCreateIdentity(clean, legacyRow) {
     err.status = 400;
     throw err;
   }
-  const batteryType = String(clean.batteryType ?? legacyRow?.batteryType ?? "").trim();
+  const batteryType = String(
+    clean.batteryType ?? legacyRow?.batteryType ?? clean.modelType ?? legacyRow?.modelType ?? "",
+  ).trim();
   if (!batteryType) {
-    const err = new Error("Battery Type is required.");
+    const err = new Error("Battery Type / Model Type is required.");
     err.status = 400;
     throw err;
   }
@@ -1267,7 +1275,7 @@ export async function mergeCategoryRowsFromParsed(categoryKey, incoming, branchI
       const { _id: _dropId, ...shapeWithoutId } = docShape;
       await Model.updateOne(
         { _id: id, branchId: bid },
-        { $set: { ...shapeWithoutId, quantity: nextQty, branchId: bid } },
+        { $set: { ...omitBlankAttributeUpdates(shapeWithoutId), quantity: nextQty, branchId: bid } },
       );
     } catch (e) {
       console.warn(`[category:${categoryKey}] update failed for _id ${id}:`, e.message);
@@ -1440,8 +1448,9 @@ export async function transferStockBetweenBranches({ inventoryDocId, quantity, f
  * Increment stock for purchase GRN lines — only adds qty to existing Mongo rows by _id.
  * Never deletes, replaces, or bulk-merges inventory (safe for existing uploaded stock).
  */
-export async function incrementStockFromPurchaseItems(items, { branchId = null, isSuperAdmin = false } = {}) {
+export async function incrementStockFromPurchaseItems(items, { branchId = null, isSuperAdmin = false, session = null } = {}) {
   const results = [];
+  const writeOpts = session ? { session } : {};
   for (const line of items || []) {
     const inventoryId = line.inventoryId || line.productId || line._id;
     if (!inventoryId) {
@@ -1460,7 +1469,7 @@ export async function incrementStockFromPurchaseItems(items, { branchId = null, 
     }
     const current = Number(found.lean.quantity ?? 0);
     const next = current + addQty;
-    await found.Model.updateOne({ _id: found.lean._id }, { $set: { quantity: next } });
+    await found.Model.updateOne({ _id: found.lean._id }, { $set: { quantity: next } }, writeOpts);
     results.push({
       ok: true,
       inventoryId: String(found.lean._id),

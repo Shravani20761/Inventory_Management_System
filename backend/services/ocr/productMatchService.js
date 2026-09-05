@@ -41,9 +41,13 @@ function catalogKeys(row) {
   };
 }
 
+function labelOf(row) {
+  return `${row.brand} ${row.model}`.trim() || row.sku;
+}
+
 /**
- * Match priority: SKU → model/code → brand+model → exact name → normalized name → fuzzy.
- * Never auto-creates products.
+ * Match priority: SKU → model/code → brand+model → exact name → normalized name → fuzzy suggestion.
+ * Never auto-creates products. Fuzzy matches are suggestions only.
  */
 export async function matchBillItemsToInventory(items, { branchId = null, isSuperAdmin = false } = {}) {
   const catalog = await listAllCategoriesAsLegacyProducts({
@@ -58,58 +62,71 @@ export async function matchBillItemsToInventory(items, { branchId = null, isSupe
     const sku = item.sku || item.modelNumber || "";
     const name = item.productName || item.description || "";
     const brand = item.brand || "";
-    let best = null;
-    let bestScore = 0;
-    let method = "none";
+    const ranked = [];
 
-    const trySet = (row, score, why) => {
-      if (score > bestScore) {
-        best = row;
-        bestScore = score;
-        method = why;
+    const consider = (row, score, why) => {
+      if (!row?.id || score < 55) return;
+      const existing = ranked.find((r) => r.id === row.id);
+      if (existing) {
+        if (score > existing.score) {
+          existing.score = score;
+          existing.method = why;
+        }
+        return;
       }
+      ranked.push({ id: row.id, label: labelOf(row), score, method: why, quantity: row.quantity, brand: row.brand, model: row.model });
     };
 
     for (const row of rows) {
       if (sku && norm(sku) && (norm(sku) === norm(row.sku) || norm(sku) === norm(row.model))) {
-        trySet(row, 100, "sku");
-        if (bestScore === 100) break;
+        consider(row, 100, "sku");
       }
-    }
-    if (bestScore < 100) {
-      for (const row of rows) {
-        if (sku && norm(sku) && norm(sku) === norm(row.model)) trySet(row, 98, "model");
-        if (brand && row.brand && norm(brand) === norm(row.brand) && fuzzyScore(sku || name, row.model) >= 90) {
-          trySet(row, 94, "brand+model");
-        }
-        if (name && norm(name) === norm(row.name)) trySet(row, 92, "exact-name");
-        if (name && norm(name) === norm(row.model)) trySet(row, 90, "normalized-name");
-        trySet(row, fuzzyScore(sku, row.model), "fuzzy");
-        trySet(row, fuzzyScore(name, row.name), "fuzzy");
-        trySet(row, fuzzyScore(name, row.model), "fuzzy");
-        if (brand && norm(brand) === norm(row.brand)) trySet(row, fuzzyScore(name, row.model), "fuzzy");
+      if (sku && norm(sku) && norm(sku) === norm(row.model)) consider(row, 98, "model");
+      if (brand && row.brand && norm(brand) === norm(row.brand) && fuzzyScore(sku || name, row.model) >= 90) {
+        consider(row, 94, "brand+model");
       }
+      if (name && norm(name) === norm(row.name)) consider(row, 92, "exact-name");
+      if (name && norm(name) === norm(row.model)) consider(row, 90, "normalized-name");
+      consider(row, fuzzyScore(sku, row.model), "fuzzy");
+      consider(row, fuzzyScore(name, row.name), "fuzzy");
+      consider(row, fuzzyScore(name, row.model), "fuzzy");
     }
 
-    if (best && bestScore >= 78) {
+    ranked.sort((a, b) => b.score - a.score);
+    const best = ranked[0];
+    const auto = best && best.score >= 90 && best.method !== "fuzzy";
+    const suggestions = ranked.slice(0, 5).map((r) => ({
+      id: r.id,
+      label: r.label,
+      score: r.score,
+      method: r.method,
+    }));
+
+    if (auto) {
       return {
         ...item,
         productId: best.id,
         matchStatus: "matched",
-        matchedLabel: `${best.brand} ${best.model}`.trim() || best.sku,
-        matchScore: bestScore,
-        matchMethod: method,
+        matchedLabel: best.label,
+        matchScore: best.score,
+        matchMethod: best.method,
         currentStock: best.quantity,
+        suggestedMatches: suggestions,
+        needsReview: false,
+        createNewProduct: false,
       };
     }
+
     return {
       ...item,
       productId: "",
-      matchStatus: "new",
-      matchedLabel: "",
-      matchScore: bestScore,
-      matchMethod: method,
+      matchStatus: "unmatched",
+      matchedLabel: best ? `Possible match: ${best.label}` : "",
+      matchScore: best?.score || 0,
+      matchMethod: best?.method || "none",
       currentStock: null,
+      suggestedMatches: suggestions,
+      needsReview: true,
       createNewProduct: false,
     };
   });

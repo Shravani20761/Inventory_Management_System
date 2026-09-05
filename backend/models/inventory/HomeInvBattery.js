@@ -27,6 +27,7 @@ const homeInvBatterySchema = new mongoose.Schema(
     /** ERP: qty */
     quantity: { type: Number, default: 0, min: 0 },
     batteryType: { type: String, default: "", trim: true },
+    modelType: { type: String, default: "", trim: true },
     amazonPrice: { type: Number, default: 0 },
     flipkartPrice: { type: Number, default: 0 },
     batteryBhaiPrice: { type: Number, default: 0 },

@@ -1,55 +1,38 @@
+/**
+ * OCR layer only: PDF text extraction and Tesseract.
+ * Does not parse products, prices, GST, or invoice fields.
+ */
 import { PDFParse } from "pdf-parse";
-import { emptyExtractedBill, parseBillTextHeuristics, isInsufficientExtraction } from "./billParseHeuristics.js";
 import { preprocessBillImage } from "./imagePreprocess.js";
+import { parsePurchaseBill, isInsufficientExtraction } from "./billParser.js";
+import { normalizeBillText } from "./textNormalizer.js";
 
 const MAX_PDF_PAGES = 20;
-const MAX_VISION_PAGES = 8;
-
-const EXTRACT_PROMPT = `You extract Indian GST purchase bills / tax invoices for a battery inventory business.
-Return JSON only. Use null for missing numbers and "" for missing strings. NEVER invent products, quantities, prices, GST, invoice numbers, supplier names, HSN, AH, voltage, warranty, or totals.
-If a value is unreadable, leave it blank/null and set low confidence (0-50).
-Identify column meanings from THIS bill (column order varies by supplier). Merge multi-line product descriptions into ONE item. Do not treat HSN, warranty, serial, or continuation lines as extra products.
-Include line items from EVERY page.
-Schema:
-{
-  "invoiceNumber": "", "invoiceDate": "", "purchaseOrderNumber": "", "poDate": "", "dueDate": "",
-  "paymentTerms": "", "placeOfSupply": "", "reverseCharge": "", "vehicleNumber": "", "deliveryNote": "",
-  "supplierDetails": { "name":"", "legalName":"", "address":"", "phone":"", "email":"", "gstin":"", "pan":"", "state":"", "stateCode":"" },
-  "buyerDetails": { "name":"", "legalName":"", "address":"", "billingAddress":"", "shippingAddress":"", "gstin":"", "state":"", "stateCode":"" },
-  "items": [{
-    "productName":"", "modelNumber":"", "sku":"", "brand":"", "category":"", "description":"",
-    "hsn":"", "quantity":null, "unit":"", "rate":null, "mrp":null, "discount":null, "discountPercent":null, "taxableAmount":null,
-    "gstRate":null, "cgstPercent":null, "sgstPercent":null, "igstPercent":null,
-    "cgst":null, "sgst":null, "igst":null, "cess":null, "total":null,
-    "serialNumber":"", "batchNumber":"", "warranty":"",
-    "batteryType":"", "capacityAh":null, "voltage":null, "technology":"", "manufacturingDate":"",
-    "confidence": null
-  }],
-  "subtotal": null, "discount": null, "taxableAmount": null, "cgst": null, "sgst": null, "igst": null, "cess": null,
-  "otherCharges": null, "freight": null, "transportation": null, "packingCharges": null, "installationCharges": null, "roundOff": null,
-  "grandTotal": null, "amountPaid": null, "balanceDue": null, "amountInWords": "",
-  "fieldConfidence": { "invoiceNumber": 0, "grandTotal": 0 },
-  "ocrConfidence": 0
-}
-fieldConfidence values are 0-100. Battery fields only if printed on the bill.`;
-
-function mergeExtract(base, overlay) {
-  const out = { ...emptyExtractedBill(), ...base, ...overlay };
-  out.supplierDetails = { ...emptyExtractedBill().supplierDetails, ...(base.supplierDetails || {}), ...(overlay.supplierDetails || {}) };
-  out.buyerDetails = { ...emptyExtractedBill().buyerDetails, ...(base.buyerDetails || {}), ...(overlay.buyerDetails || {}) };
-  out.items = Array.isArray(overlay.items) && overlay.items.length ? overlay.items : base.items || [];
-  out.fieldConfidence = { ...(base.fieldConfidence || {}), ...(overlay.fieldConfidence || {}) };
-  return out;
-}
+const WEAK_PAGE_CHARS = 40;
 
 async function ocrImageBuffer(buffer) {
   try {
     const Tesseract = (await import("tesseract.js")).default;
-    const { data } = await Tesseract.recognize(buffer, "eng", { logger: () => {} });
-    return String(data?.text || "").trim();
+    const { data } = await Tesseract.recognize(buffer, "eng", {
+      logger: () => {},
+    });
+    const text = String(data?.text || "").trim();
+    const confidence = Number(data?.confidence);
+    const lines = Array.isArray(data?.lines)
+      ? data.lines.map((ln) => ({
+          text: String(ln.text || "").trim(),
+          confidence: Number(ln.confidence) || null,
+          bbox: ln.bbox || null,
+        }))
+      : [];
+    return {
+      text,
+      confidence: Number.isFinite(confidence) ? confidence : null,
+      lines,
+    };
   } catch (e) {
     console.warn("[ocr] tesseract failed:", e.message);
-    return "";
+    return { text: "", confidence: null, lines: [] };
   }
 }
 
@@ -72,180 +55,117 @@ async function extractPdfPages(buffer) {
     } catch (e) {
       console.warn("[ocr] PDF screenshot failed:", e.message);
     }
-    const pageCount = Math.max(declared, screenshots.length, 1);
+    const pageCount = Math.max(declared, screenshots.length, pagesFromText.length, 1);
     const pageBuffers = [];
     for (const page of screenshots) {
       const buf = page.data ? Buffer.from(page.data) : null;
       if (buf?.length) pageBuffers.push(buf);
     }
-    return { text: combinedText, pageCount, pageBuffers };
+    const pageTexts = [];
+    for (let i = 0; i < pageCount; i += 1) {
+      const fromPdf = String(pagesFromText[i]?.text || pagesFromText[i] || "").trim();
+      pageTexts.push(fromPdf);
+    }
+    return { text: combinedText, pageCount, pageBuffers, pageTexts };
   } catch (e) {
     if (e.status === 400) throw e;
     console.warn("[ocr] pdf-parse failed:", e.message);
-    return { text: "", pageCount: 1, pageBuffers: [] };
+    return { text: "", pageCount: 1, pageBuffers: [], pageTexts: [] };
   } finally {
     await parser.destroy().catch(() => {});
   }
 }
 
-function parseJsonLoose(raw) {
-  const s = String(raw || "").trim();
-  const start = s.indexOf("{");
-  const end = s.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  try {
-    return JSON.parse(s.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-}
-
-function visionPartsFromPages(pageBuffers, mimeFallback) {
-  return pageBuffers.slice(0, MAX_VISION_PAGES).map((buf) => ({
-    mime: "image/jpeg",
-    data: buf.toString("base64"),
-    fallback: mimeFallback,
-  }));
-}
-
-async function extractWithGemini({ pdfBuffer, isPdf, pageBuffers, mime }) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return null;
-  const model = process.env.GEMINI_OCR_MODEL || "gemini-2.0-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
-  const parts = [{ text: EXTRACT_PROMPT }];
-  if (isPdf && pdfBuffer?.length) {
-    parts.push({ inline_data: { mime_type: "application/pdf", data: pdfBuffer.toString("base64") } });
-  }
-  const images = visionPartsFromPages(pageBuffers, mime);
-  if (!isPdf && images.length === 0 && pdfBuffer) {
-    parts.push({ inline_data: { mime_type: mime, data: pdfBuffer.toString("base64") } });
-  }
-  for (const img of images) {
-    parts.push({ inline_data: { mime_type: img.mime, data: img.data } });
-  }
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: { temperature: 0, responseMimeType: "application/json" },
-    }),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`Gemini OCR failed (${res.status}): ${errText.slice(0, 240)}`);
-  }
-  const json = await res.json();
-  const text = json?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("\n") || "";
-  return parseJsonLoose(text);
-}
-
-async function extractWithOpenAI({ pageBuffers, mime, singleBuffer }) {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
-  const model = process.env.OPENAI_OCR_MODEL || "gpt-4o-mini";
-  const images = pageBuffers.length
-    ? pageBuffers.slice(0, MAX_VISION_PAGES)
-    : singleBuffer
-      ? [singleBuffer]
-      : [];
-  if (!images.length) return null;
-  const content = [
-    { type: "text", text: "Extract this purchase bill. Use every page image. Return JSON only." },
-    ...images.map((buf) => ({
-      type: "image_url",
-      image_url: { url: `data:${mime.includes("pdf") ? "image/jpeg" : mime};base64,${buf.toString("base64")}` },
-    })),
-  ];
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: EXTRACT_PROMPT },
-        { role: "user", content },
-      ],
-    }),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`OpenAI OCR failed (${res.status}): ${errText.slice(0, 240)}`);
-  }
-  const json = await res.json();
-  return parseJsonLoose(json?.choices?.[0]?.message?.content);
-}
-
-export async function extractPurchaseBill(buffer, mimetype = "image/jpeg") {
+/**
+ * Read characters from the document. Returns text + optional page/confidence metadata.
+ */
+export async function extractBillText(buffer, mimetype = "image/jpeg") {
   const mime = String(mimetype || "image/jpeg");
   const isPdf = mime.includes("pdf");
-  let engine = "heuristics";
-  let rawText = "";
-  let pageCount = 1;
-  let extracted = emptyExtractedBill();
+  const pages = [];
+  let engine = "none";
   let pageBuffers = [];
+  let pageCount = 1;
 
   if (isPdf) {
     const pdf = await extractPdfPages(buffer);
-    rawText = pdf.text;
     pageCount = pdf.pageCount || 1;
     pageBuffers = [];
     for (const pageBuf of pdf.pageBuffers) {
       pageBuffers.push(await preprocessBillImage(pageBuf));
     }
-    if (rawText.length < 80 && pageBuffers.length) {
-      const pageTexts = [];
-      for (const pageBuf of pageBuffers) {
-        pageTexts.push(await ocrImageBuffer(pageBuf));
+    for (let i = 0; i < pageCount; i += 1) {
+      let text = String(pdf.pageTexts[i] || "").trim();
+      let confidence = null;
+      let lines = [];
+      const weak = text.length < WEAK_PAGE_CHARS;
+      if (weak && pageBuffers[i]) {
+        const ocr = await ocrImageBuffer(pageBuffers[i]);
+        if (ocr.text) {
+          text = ocr.text;
+          confidence = ocr.confidence;
+          lines = ocr.lines;
+          engine = engine === "pdf-text" ? "pdf-text+tesseract" : "tesseract";
+        }
+      } else if (text) {
+        engine = engine === "tesseract" ? "pdf-text+tesseract" : "pdf-text";
       }
-      if (pageTexts.some(Boolean)) {
-        rawText = pageTexts.filter(Boolean).join("\n\n----- PAGE -----\n\n");
-        engine = "tesseract";
-      }
-    } else if (rawText.length > 80) {
-      engine = "pdf-text";
+      pages.push({ page: i + 1, text, confidence, lines });
     }
-    if (rawText) extracted = parseBillTextHeuristics(rawText);
+    if (!pages.some((p) => p.text) && pageBuffers.length) {
+      for (let i = 0; i < pageBuffers.length; i += 1) {
+        const ocr = await ocrImageBuffer(pageBuffers[i]);
+        pages[i] = { page: i + 1, text: ocr.text, confidence: ocr.confidence, lines: ocr.lines };
+      }
+      engine = "tesseract";
+    }
   } else {
     const processed = await preprocessBillImage(buffer);
     pageBuffers = [processed];
-    rawText = await ocrImageBuffer(processed);
-    if (rawText) {
-      extracted = parseBillTextHeuristics(rawText);
-      engine = "tesseract";
-    }
+    const ocr = await ocrImageBuffer(processed);
+    engine = ocr.text ? "tesseract" : "none";
+    pages.push({ page: 1, text: ocr.text, confidence: ocr.confidence, lines: ocr.lines });
+    pageCount = 1;
   }
 
-  try {
-    const vision =
-      (await extractWithGemini({ pdfBuffer: isPdf ? buffer : null, isPdf, pageBuffers, mime })) ||
-      (await extractWithOpenAI({
-        pageBuffers,
-        mime: isPdf ? "image/jpeg" : mime,
-        singleBuffer: isPdf ? null : pageBuffers[0] || buffer,
-      }));
-    if (vision && typeof vision === "object") {
-      extracted = mergeExtract(extracted, vision);
-      engine = process.env.GEMINI_API_KEY ? "gemini+local" : "openai+local";
-    }
-  } catch (e) {
-    console.warn("[ocr] vision extract skipped:", e.message);
-  }
+  const rawText = pages
+    .map((p) => (pages.length > 1 ? `\n\n----- PAGE ${p.page} -----\n\n${p.text}` : p.text))
+    .join("")
+    .trim();
+  const confidences = pages.map((p) => p.confidence).filter((c) => typeof c === "number");
+  const ocrConfidence = confidences.length
+    ? Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length)
+    : null;
 
+  return {
+    rawText,
+    normalizedText: normalizeBillText(rawText),
+    pages,
+    pageCount,
+    pageBuffers,
+    engine,
+    ocrConfidence,
+    mime,
+  };
+}
+
+/** OCR → normalize → custom parser. No external AI. */
+export async function extractPurchaseBill(buffer, mimetype = "image/jpeg") {
+  const ocr = await extractBillText(buffer, mimetype);
+  const extracted = parsePurchaseBill(ocr.normalizedText || ocr.rawText, {
+    pages: ocr.pages,
+    ocrConfidence: ocr.ocrConfidence,
+  });
   const insufficient = isInsufficientExtraction(extracted);
   return {
     extracted,
-    rawText,
-    pageCount,
-    engine,
+    rawText: ocr.rawText,
+    pageCount: ocr.pageCount,
+    engine: ocr.engine === "none" ? "parser" : ocr.engine,
     insufficient,
-    pageBuffers,
+    pageBuffers: ocr.pageBuffers,
+    pages: ocr.pages,
+    ocrConfidence: ocr.ocrConfidence,
   };
 }
 

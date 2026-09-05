@@ -5,10 +5,12 @@ import { extractPurchaseBill } from "./ocr/billOcrService.js";
 import { matchBillItemsToInventory } from "./ocr/productMatchService.js";
 import { emptyExtractedBill } from "./ocr/billParseHeuristics.js";
 import { validatePurchaseBillMath } from "./ocr/billValidation.js";
+import { matchSupplier } from "./ocr/supplierMatchService.js";
 import { uploadPurchaseBillFile } from "./cloudinaryService.js";
 import { incrementStockFromPurchaseItems, createCategoryInventoryRow, inferCategoryKeyFromLegacyRow } from "./categoryInventoryService.js";
 import { createPurchaseOrder } from "./purchaseManagementService.js";
 import { recordAudit } from "./auditService.js";
+import { assertActivePurchaseBranch } from "../utils/purchaseBranch.js";
 
 export const OCR_STATUS = {
   UPLOADED: "Uploaded",
@@ -24,6 +26,12 @@ function branchFilter(branchId, isSuperAdmin) {
   if (branchId) return { branchId: new mongoose.Types.ObjectId(String(branchId)) };
   if (isSuperAdmin) return {};
   return { _id: { $in: [] } };
+}
+
+/** HQ can open a bill by id even when the dashboard filter is All / another branch. */
+function billAccessFilter(id, tenant) {
+  if (tenant?.isSuperAdmin) return { _id: id };
+  return { _id: id, ...branchFilter(tenant?.branchId, false) };
 }
 
 function audit(user, tenant, action, bill, metadata = {}) {
@@ -47,6 +55,7 @@ function toClient(doc) {
     _id: o._id?.toString?.() ?? o._id,
     branchId: branch?._id?.toString?.() ?? o.branchId?.toString?.() ?? o.branchId,
     branchName: branch?.branchName || branch?.name || "",
+    businessName: branch?.businessName || "",
     itemCount: (o.items || []).length,
     supplierName: o.supplierDetails?.name || "",
     gstTotal: (Number(o.cgst) || 0) + (Number(o.sgst) || 0) + (Number(o.igst) || 0),
@@ -127,13 +136,16 @@ function applyExtract(bill, extracted, { engine, rawText, pageCount, insufficien
   bill.rawOcrText = rawText || "";
   bill.pageCount = pageCount || 1;
   bill.extractedSnapshot = snapshotFromBill(bill);
+  bill.parseWarnings = Array.isArray(e.parseWarnings) ? e.parseWarnings : [];
+  bill.ocrPages = Array.isArray(e.pages) ? e.pages.map((p) => ({ page: p.page, confidence: p.confidence ?? null, text: p.text || "" })) : [];
   bill.financialWarnings = validatePurchaseBillMath(bill);
   if (insufficient) {
     bill.ocrStatus = OCR_STATUS.FAILED;
-    bill.ocrError = "Unable to extract sufficient information from this bill.";
+    bill.ocrError = "OCR could not reliably read this bill. You can enter the purchase manually.";
   } else {
     const low = Number(e.ocrConfidence) > 0 && Number(e.ocrConfidence) < 75;
-    bill.ocrStatus = low ? OCR_STATUS.NEEDS_REVIEW : OCR_STATUS.COMPLETED;
+    const needsItem = (bill.items || []).some((it) => it.needsReview || it.matchStatus === "unmatched");
+    bill.ocrStatus = low || needsItem ? OCR_STATUS.NEEDS_REVIEW : OCR_STATUS.COMPLETED;
     bill.ocrError = "";
   }
 }
@@ -163,7 +175,7 @@ export async function listPurchaseBills(filters = {}, tenant = {}) {
     q.$or = [{ invoiceNumber: rx }, { "supplierDetails.name": rx }, { "supplierDetails.gstin": rx }];
   }
   const docs = await PurchaseBill.find(q)
-    .populate("branchId", "name branchName code")
+    .populate("branchId", "name branchName code businessName")
     .sort({ createdAt: -1 })
     .limit(200)
     .lean();
@@ -171,8 +183,10 @@ export async function listPurchaseBills(filters = {}, tenant = {}) {
 }
 
 export async function getPurchaseBill(id, tenant = {}) {
-  const q = { _id: id, ...branchFilter(tenant.branchId, tenant.isSuperAdmin) };
-  const doc = await PurchaseBill.findOne(q).populate("branchId", "name branchName code");
+  const doc = await PurchaseBill.findOne(billAccessFilter(id, tenant)).populate(
+    "branchId",
+    "name branchName code businessName",
+  );
   return doc ? toClient(doc) : null;
 }
 
@@ -214,7 +228,11 @@ export async function createUploadedPurchaseBill({ buffer, mimetype, originalNam
     throw err;
   }
   if (!tenant.branchId) {
-    const err = new Error("Select a branch before uploading a purchase bill.");
+    const err = new Error(
+      tenant.isSuperAdmin
+        ? "Select the branch for this purchase before uploading the bill."
+        : "Your account is not assigned to a branch. Please contact an administrator.",
+    );
     err.status = 400;
     throw err;
   }
@@ -235,11 +253,12 @@ export async function createUploadedPurchaseBill({ buffer, mimetype, originalNam
     createdByName: user?.name || user?.email || "",
   });
   await audit(user, tenant, "purchase_bill.uploaded", bill, { originalFileName: originalName, fileType: mimetype });
-  return toClient(bill);
+  const populated = await PurchaseBill.findById(bill._id).populate("branchId", "name branchName code businessName");
+  return toClient(populated || bill);
 }
 
 export async function runPurchaseBillOcr(id, { buffer, mimetype, replaceOriginal = false } = {}, tenant, user) {
-  const bill = await PurchaseBill.findOne({ _id: id, ...branchFilter(tenant.branchId, tenant.isSuperAdmin) });
+  const bill = await PurchaseBill.findOne(billAccessFilter(id, tenant));
   if (!bill) return null;
   if (["Confirmed", "Inventory Updated"].includes(bill.ocrStatus)) {
     const err = new Error("Confirmed bills cannot be re-processed");
@@ -277,6 +296,17 @@ export async function runPurchaseBillOcr(id, { buffer, mimetype, replaceOriginal
     }
     if (bill.ocrStatus !== OCR_STATUS.FAILED) {
       bill.items = await matchBillItemsToInventory(bill.items, tenant);
+      const supplierHit = await matchSupplier(bill.supplierDetails, tenant);
+      bill.supplierMatch = supplierHit;
+      if (supplierHit.matched && supplierHit.method === "gstin" && supplierHit.name) {
+        bill.supplierDetails = { ...(bill.supplierDetails || {}), name: supplierHit.name || bill.supplierDetails?.name };
+        if (supplierHit.phone && !bill.supplierDetails.phone) bill.supplierDetails.phone = supplierHit.phone;
+      } else if (supplierHit.suggestedName && !bill.supplierDetails?.name) {
+        bill.supplierDetails = { ...(bill.supplierDetails || {}), name: supplierHit.suggestedName };
+      }
+      bill.financialWarnings = validatePurchaseBillMath(bill);
+      const needsItem = (bill.items || []).some((it) => it.needsReview || it.matchStatus === "unmatched");
+      if (needsItem && bill.ocrStatus === OCR_STATUS.COMPLETED) bill.ocrStatus = OCR_STATUS.NEEDS_REVIEW;
     }
     await bill.save();
     await audit(user, tenant, bill.ocrStatus === OCR_STATUS.FAILED ? "purchase_bill.ocr_failed" : "purchase_bill.ocr_completed", bill, {
@@ -289,6 +319,7 @@ export async function runPurchaseBillOcr(id, { buffer, mimetype, replaceOriginal
     await bill.save();
     await audit(user, tenant, "purchase_bill.ocr_failed", bill, { error: e.message });
   }
+  await bill.populate("branchId", "name branchName code businessName");
   return toClient(bill);
 }
 
@@ -312,7 +343,11 @@ export async function retryPurchaseBillOcr(id, file, tenant, user) {
 
 export async function createManualPurchaseBill(payload, tenant, user) {
   if (!tenant.branchId) {
-    const err = new Error("Select a branch before creating a purchase bill.");
+    const err = new Error(
+      tenant.isSuperAdmin
+        ? "Select the branch for this purchase before uploading the bill."
+        : "Your account is not assigned to a branch. Please contact an administrator.",
+    );
     err.status = 400;
     throw err;
   }
@@ -333,11 +368,12 @@ export async function createManualPurchaseBill(payload, tenant, user) {
     fileType: payload.fileType || "",
   });
   await audit(user, tenant, "purchase_bill.manual_created", bill, {});
-  return toClient(bill);
+  const populated = await PurchaseBill.findById(bill._id).populate("branchId", "name branchName code businessName");
+  return toClient(populated || bill);
 }
 
 export async function savePurchaseBillReview(id, payload, tenant, user) {
-  const bill = await PurchaseBill.findOne({ _id: id, ...branchFilter(tenant.branchId, tenant.isSuperAdmin) });
+  const bill = await PurchaseBill.findOne(billAccessFilter(id, tenant));
   if (!bill) return null;
   if (["Confirmed", "Inventory Updated"].includes(bill.ocrStatus)) {
     const err = new Error("This purchase bill is already confirmed");
@@ -379,6 +415,10 @@ export async function savePurchaseBillReview(id, payload, tenant, user) {
   for (const f of fields) {
     if (payload[f] !== undefined) bill[f] = payload[f];
   }
+  if (tenant.isSuperAdmin && payload.branchId && String(payload.branchId).toLowerCase() !== "all") {
+    await assertActivePurchaseBranch(payload.branchId);
+    bill.branchId = payload.branchId;
+  }
   bill.financialWarnings = validatePurchaseBillMath(bill);
   if (bill.ocrStatus === OCR_STATUS.FAILED) bill.ocrStatus = OCR_STATUS.NEEDS_REVIEW;
   else if (bill.ocrStatus === OCR_STATUS.PROCESSING || bill.ocrStatus === OCR_STATUS.UPLOADED) {
@@ -386,6 +426,7 @@ export async function savePurchaseBillReview(id, payload, tenant, user) {
   }
   await bill.save();
   await audit(user, tenant, "purchase_bill.fields_edited", bill, { fields: Object.keys(payload || {}).filter((k) => k !== "rawOcrText") });
+  await bill.populate("branchId", "name branchName code businessName");
   return toClient(bill);
 }
 
@@ -401,7 +442,7 @@ function inferTypeFromItem(item) {
 }
 
 export async function confirmPurchaseBill(id, { force = false } = {}, tenant, user) {
-  const bill = await PurchaseBill.findOne({ _id: id, ...branchFilter(tenant.branchId, tenant.isSuperAdmin) });
+  const bill = await PurchaseBill.findOne(billAccessFilter(id, tenant));
   if (!bill) return null;
   if (bill.inventoryUpdated) {
     const err = new Error("Inventory was already updated for this bill");
@@ -409,9 +450,12 @@ export async function confirmPurchaseBill(id, { force = false } = {}, tenant, us
     throw err;
   }
   if (bill.ocrStatus === OCR_STATUS.FAILED) {
-    const err = new Error("Cannot confirm a failed OCR bill. Retry OCR or enter details manually first.");
-    err.status = 400;
-    throw err;
+    const hasManualLines = (bill.items || []).some((item) => Number(item.quantity) > 0 && String(item.productName || item.sku || "").trim());
+    if (!hasManualLines) {
+      const err = new Error("OCR could not reliably read this bill. You can enter the purchase manually.");
+      err.status = 400;
+      throw err;
+    }
   }
 
   const pending = (bill.items || []).filter(
@@ -432,6 +476,14 @@ export async function confirmPurchaseBill(id, { force = false } = {}, tenant, us
   }
 
   const confirmBranchId = tenant.branchId || bill.branchId;
+  if (tenant.isSuperAdmin && tenant.branchId && String(bill.branchId) !== String(tenant.branchId)) {
+    bill.branchId = new mongoose.Types.ObjectId(String(tenant.branchId));
+  }
+  if (!tenant.isSuperAdmin && tenant.branchId && String(bill.branchId) !== String(tenant.branchId)) {
+    const err = new Error("Forbidden: you cannot create purchases for another branch.");
+    err.status = 403;
+    throw err;
+  }
   const stockLines = [];
   for (const item of bill.items || []) {
     const qty = Number(item.quantity);
@@ -464,89 +516,160 @@ export async function confirmPurchaseBill(id, { force = false } = {}, tenant, us
     });
   }
 
-  const stockResults = stockLines.length
-    ? await incrementStockFromPurchaseItems(stockLines, {
-        branchId: confirmBranchId,
-        isSuperAdmin: tenant.isSuperAdmin,
-      })
-    : [];
-
-  const inventoryChanges = [];
-  for (const r of stockResults) {
-    if (!r.ok) continue;
-    const line = stockLines.find((s) => String(s.inventoryId) === String(r.inventoryId));
-    inventoryChanges.push({
-      productId: r.inventoryId,
-      productName: line?.productName || "",
-      previousStock: r.previousQty,
-      purchasedQty: r.addedQty,
-      newStock: r.newQty,
-    });
-    await InventoryStockHistory.create({
-      branchId: confirmBranchId || null,
-      productId: r.inventoryId,
-      productName: line?.productName || "",
-      sku: line?.sku || "",
-      brand: line?.brand || "",
-      type: "Purchase Received",
-      previousStock: r.previousQty,
-      quantityChange: r.addedQty,
-      newStock: r.newQty,
-      supplier: bill.supplierDetails?.name || "",
-      invoiceNumber: bill.invoiceNumber || "",
-      invoiceDate: bill.invoiceDate || "",
-      purchaseBillId: bill._id,
-      notes: `Purchase Received — Product: ${line?.productName || line?.sku || ""} Previous Stock: ${r.previousQty} Purchased: +${r.addedQty} New Stock: ${r.newQty}`,
-      createdBy: user?.name || user?.email || "",
-    });
-  }
-
-  let purchaseOrderId = "";
-  try {
-    const po = await createPurchaseOrder(
-      {
-        vendorName: bill.supplierDetails?.name || "",
-        vendorGst: bill.supplierDetails?.gstin || "",
-        vendorMobile: bill.supplierDetails?.phone || "",
-        billNo: bill.invoiceNumber || "",
-        billDetails: `OCR purchase bill ${bill._id}`,
-        purchaseDate: bill.invoiceDate || new Date().toISOString().slice(0, 10),
-        gstAmount: (Number(bill.cgst) || 0) + (Number(bill.sgst) || 0) + (Number(bill.igst) || 0),
-        finalAmount: Number(bill.grandTotal) || 0,
-        paidAmount: Number(bill.amountPaid) || 0,
-        paymentMode: Number(bill.amountPaid) > 0 ? "Partial Payment" : "Credit / Loan",
-        updateInventory: false,
-        products: stockLines.map((s) => ({
-          inventoryId: s.inventoryId,
-          model: s.sku,
-          brand: s.brand,
-          qty: s.qty,
-          purchaseRate: Number((bill.items || []).find((it) => String(it.productId) === String(s.inventoryId))?.rate) || 0,
-          productType: "",
-        })),
-        notes: `From purchase bill OCR ${bill.invoiceNumber || bill._id}`,
-      },
-      { ...tenant, branchId: confirmBranchId },
-    );
-    purchaseOrderId = po?.purchaseId || po?.id || "";
-  } catch (e) {
-    console.warn("[purchase-bill] PO create skipped:", e.message);
-  }
-
-  bill.inventoryUpdated = stockResults.some((r) => r.ok);
-  bill.purchaseOrderId = purchaseOrderId;
-  bill.inventoryChanges = inventoryChanges;
-  bill.ocrStatus = bill.inventoryUpdated ? OCR_STATUS.INVENTORY_UPDATED : OCR_STATUS.CONFIRMED;
-  await bill.save();
-  await audit(user, tenant, "purchase_bill.confirmed", bill, { purchaseOrderId, inventoryUpdated: bill.inventoryUpdated });
-  if (bill.inventoryUpdated) {
-    await audit(user, tenant, "purchase_bill.inventory_updated", bill, { lines: inventoryChanges.length });
-  }
-
-  return {
-    bill: toClient(bill),
-    stockResults,
-    inventoryChanges,
-    purchaseOrderId,
+  const applyStock = async (session) => {
+    const writeOpts = session ? { session } : {};
+    const stockResults = stockLines.length
+      ? await incrementStockFromPurchaseItems(stockLines, {
+          branchId: confirmBranchId,
+          isSuperAdmin: false,
+          session,
+        })
+      : [];
+    const inventoryChanges = [];
+    for (const r of stockResults) {
+      if (!r.ok) continue;
+      const line = stockLines.find((s) => String(s.inventoryId) === String(r.inventoryId));
+      inventoryChanges.push({
+        productId: r.inventoryId,
+        productName: line?.productName || "",
+        previousStock: r.previousQty,
+        purchasedQty: r.addedQty,
+        newStock: r.newQty,
+      });
+      await InventoryStockHistory.create(
+        [
+          {
+            branchId: confirmBranchId || null,
+            productId: r.inventoryId,
+            productName: line?.productName || "",
+            sku: line?.sku || "",
+            brand: line?.brand || "",
+            type: "Purchase Received",
+            previousStock: r.previousQty,
+            quantityChange: r.addedQty,
+            newStock: r.newQty,
+            supplier: bill.supplierDetails?.name || "",
+            invoiceNumber: bill.invoiceNumber || "",
+            invoiceDate: bill.invoiceDate || "",
+            purchaseBillId: bill._id,
+            notes: `Purchase Received — Product: ${line?.productName || line?.sku || ""} Previous Stock: ${r.previousQty} Purchased: +${r.addedQty} New Stock: ${r.newQty}`,
+            createdBy: user?.name || user?.email || "",
+          },
+        ],
+        writeOpts,
+      );
+    }
+    return { stockResults, inventoryChanges };
   };
+
+  let stockResults = [];
+  let inventoryChanges = [];
+  let session = null;
+  try {
+    session = await mongoose.startSession();
+    session.startTransaction();
+    ({ stockResults, inventoryChanges } = await applyStock(session));
+    let purchaseOrderId = "";
+    try {
+      const po = await createPurchaseOrder(
+        {
+          vendorName: bill.supplierDetails?.name || "",
+          vendorGst: bill.supplierDetails?.gstin || "",
+          vendorMobile: bill.supplierDetails?.phone || "",
+          billNo: bill.invoiceNumber || "",
+          billDetails: `OCR purchase bill ${bill._id}`,
+          purchaseDate: bill.invoiceDate || new Date().toISOString().slice(0, 10),
+          gstAmount: (Number(bill.cgst) || 0) + (Number(bill.sgst) || 0) + (Number(bill.igst) || 0),
+          finalAmount: Number(bill.grandTotal) || 0,
+          paidAmount: Number(bill.amountPaid) || 0,
+          paymentMode: Number(bill.amountPaid) > 0 ? "Partial Payment" : "Credit / Loan",
+          updateInventory: false,
+          products: stockLines.map((s) => ({
+            inventoryId: s.inventoryId,
+            model: s.sku,
+            brand: s.brand,
+            qty: s.qty,
+            purchaseRate: Number((bill.items || []).find((it) => String(it.productId) === String(s.inventoryId))?.rate) || 0,
+            productType: "",
+          })),
+          notes: `From purchase bill OCR ${bill.invoiceNumber || bill._id}`,
+        },
+        { ...tenant, branchId: confirmBranchId },
+      );
+      purchaseOrderId = po?.purchaseId || po?.id || "";
+    } catch (e) {
+      console.warn("[purchase-bill] PO create skipped:", e.message);
+    }
+    bill.inventoryUpdated = stockResults.some((r) => r.ok);
+    bill.purchaseOrderId = purchaseOrderId;
+    bill.inventoryChanges = inventoryChanges;
+    bill.ocrStatus = bill.inventoryUpdated ? OCR_STATUS.INVENTORY_UPDATED : OCR_STATUS.CONFIRMED;
+    await bill.save({ session });
+    await session.commitTransaction();
+    await audit(user, tenant, "purchase_bill.confirmed", bill, { purchaseOrderId, inventoryUpdated: bill.inventoryUpdated });
+    if (bill.inventoryUpdated) {
+      await audit(user, tenant, "purchase_bill.inventory_updated", bill, { lines: inventoryChanges.length });
+    }
+    await bill.populate("branchId", "name branchName code businessName");
+    return {
+      bill: toClient(bill),
+      stockResults,
+      inventoryChanges,
+      purchaseOrderId,
+    };
+  } catch (e) {
+    if (session) await session.abortTransaction().catch(() => {});
+    const standalone = /Transaction numbers are only allowed|replica set|not supported/i.test(String(e.message || ""));
+    if (!standalone) throw e;
+    ({ stockResults, inventoryChanges } = await applyStock(null));
+    let purchaseOrderId = "";
+    try {
+      const po = await createPurchaseOrder(
+        {
+          vendorName: bill.supplierDetails?.name || "",
+          vendorGst: bill.supplierDetails?.gstin || "",
+          vendorMobile: bill.supplierDetails?.phone || "",
+          billNo: bill.invoiceNumber || "",
+          billDetails: `OCR purchase bill ${bill._id}`,
+          purchaseDate: bill.invoiceDate || new Date().toISOString().slice(0, 10),
+          gstAmount: (Number(bill.cgst) || 0) + (Number(bill.sgst) || 0) + (Number(bill.igst) || 0),
+          finalAmount: Number(bill.grandTotal) || 0,
+          paidAmount: Number(bill.amountPaid) || 0,
+          paymentMode: Number(bill.amountPaid) > 0 ? "Partial Payment" : "Credit / Loan",
+          updateInventory: false,
+          products: stockLines.map((s) => ({
+            inventoryId: s.inventoryId,
+            model: s.sku,
+            brand: s.brand,
+            qty: s.qty,
+            purchaseRate: Number((bill.items || []).find((it) => String(it.productId) === String(s.inventoryId))?.rate) || 0,
+            productType: "",
+          })),
+          notes: `From purchase bill OCR ${bill.invoiceNumber || bill._id}`,
+        },
+        { ...tenant, branchId: confirmBranchId },
+      );
+      purchaseOrderId = po?.purchaseId || po?.id || "";
+    } catch (err) {
+      console.warn("[purchase-bill] PO create skipped:", err.message);
+    }
+    bill.inventoryUpdated = stockResults.some((r) => r.ok);
+    bill.purchaseOrderId = purchaseOrderId;
+    bill.inventoryChanges = inventoryChanges;
+    bill.ocrStatus = bill.inventoryUpdated ? OCR_STATUS.INVENTORY_UPDATED : OCR_STATUS.CONFIRMED;
+    await bill.save();
+    await audit(user, tenant, "purchase_bill.confirmed", bill, { purchaseOrderId, inventoryUpdated: bill.inventoryUpdated });
+    if (bill.inventoryUpdated) {
+      await audit(user, tenant, "purchase_bill.inventory_updated", bill, { lines: inventoryChanges.length });
+    }
+    await bill.populate("branchId", "name branchName code businessName");
+    return {
+      bill: toClient(bill),
+      stockResults,
+      inventoryChanges,
+      purchaseOrderId,
+    };
+  } finally {
+    if (session) await session.endSession().catch(() => {});
+  }
 }

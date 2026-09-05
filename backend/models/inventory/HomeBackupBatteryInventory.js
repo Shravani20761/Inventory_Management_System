@@ -12,7 +12,8 @@ const homeBackupBatteryInventorySchema = new mongoose.Schema(
     brand: { type: String, default: "", trim: true },
     model: { type: String, required: true, trim: true },
     batteryAH: { type: Number, default: 0 },
-    batteryType: { type: String, default: "Tubular", trim: true },
+    batteryType: { type: String, default: "", trim: true },
+    modelType: { type: String, default: "", trim: true },
     warranty: { type: String, default: "" },
     price: { type: Number, default: 0 },
     /** With old battery exchange — defaults to `price` when unset */

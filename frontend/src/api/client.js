@@ -684,9 +684,10 @@ export const api = {
         body: JSON.stringify(payload),
       }),
     manual: (payload) => request("/purchase-bills/manual", { method: "POST", body: JSON.stringify(payload) }),
-    upload: async (file) => {
+    upload: async (file, { branchId } = {}) => {
       const form = new FormData();
       form.append("file", file);
+      if (branchId) form.append("branchId", String(branchId));
       const res = await fetch(`${API_BASE}/purchase-bills/upload`, {
         method: "POST",
         headers: authHeaders(),
@@ -702,9 +703,10 @@ export const api = {
       }
       return res.json();
     },
-    retryOcr: async (id, file) => {
+    retryOcr: async (id, file, { branchId } = {}) => {
       const form = new FormData();
       if (file) form.append("file", file);
+      if (branchId) form.append("branchId", String(branchId));
       const res = await fetch(`${API_BASE}/purchase-bills/${encodeURIComponent(id)}/retry-ocr`, {
         method: "POST",
         headers: authHeaders(),

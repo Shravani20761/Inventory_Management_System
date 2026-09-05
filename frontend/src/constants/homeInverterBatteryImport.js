@@ -13,6 +13,12 @@ export const HOME_INVERTER_BATTERY_COLUMN_MAP_ORDERED = [
   { key: "brand", aliases: ["brand", "make"] },
 
   {
+    key: "modelType",
+    label: "Model Type",
+    aliases: ["model type", "modeltype"],
+  },
+
+  {
 
     key: "batteryModel",
 
@@ -142,7 +148,7 @@ export const HOME_INVERTER_BATTERY_TABLE_COLUMNS = [
 
   { key: "weight", label: "Battery Weight", format: "num", group: "spec", align: "center" },
 
-  { key: "batteryType", label: "Battery Type", group: "spec" },
+  { key: "modelType", label: "Model Type", group: "spec" },
 
   { key: "warranty", label: "Warranty", group: "warranty" },
 

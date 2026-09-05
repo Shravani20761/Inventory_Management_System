@@ -964,6 +964,7 @@ function formatHomeInvBatTableCell(col, item, serialNumber = null) {
   }
   if (key === "batteryAH") v = item.batteryAH ?? item.ah ?? item.capacityAh;
   if (key === "batteryModel") v = item.batteryModel || item.model;
+  if (key === "modelType" || key === "batteryType") v = item.modelType || item.batteryType;
   if (key === "weight") v = item.weight ?? item.batteryWeight;
   if (key === "cd") v = item.cd ?? item.cdPrice;
   if (key === "dp") v = item.dp ?? item.dpPrice ?? item.purchaseRate ?? item.dpPlusGst;
@@ -998,6 +999,7 @@ function inventoryFormFromItem(item, defaultTypeWhenAdding = "Car", defaultBrand
     batteryModel: "",
     inverterVA: "",
     batteryType: "",
+    modelType: "",
     warranty: "",
     backupHours: "",
     backupSupport: "",
@@ -1045,13 +1047,14 @@ function inventoryFormFromItem(item, defaultTypeWhenAdding = "Car", defaultBrand
       supplier: "",
       ah: "",
       voltage: "",
+      warranty: "",
+      ...comboDefaults,
       batteryType: isLithiumIonBatterySection(defaultTypeWhenAdding)
         ? "Lithium Ion"
         : isHomeInverterBatterySection(defaultTypeWhenAdding)
           ? "Tubular"
           : "",
-      warranty: "",
-      ...comboDefaults,
+      modelType: isHomeInverterBatterySection(defaultTypeWhenAdding) ? "Tubular" : "",
     };
   }
   const dpDisplay = item.dpPlusGst != null && item.dpPlusGst !== "" ? item.dpPlusGst : item.purchaseRate;
@@ -1085,7 +1088,8 @@ function inventoryFormFromItem(item, defaultTypeWhenAdding = "Car", defaultBrand
     inverterModel: item.inverterModel ?? "",
     batteryModel: item.batteryModel ?? item.model ?? "",
     inverterVA: item.inverterVA ?? "",
-    batteryType: item.batteryType ?? "",
+    batteryType: item.batteryType ?? item.modelType ?? "",
+    modelType: item.modelType ?? item.batteryType ?? "",
     warranty: item.warranty ?? "",
     backupHours: item.backupHours ?? "",
     backupSupport: item.backupSupport ?? "",
@@ -1152,6 +1156,8 @@ function mapInventoryFromServer(rows) {
       _catalogSource: row._catalogSource,
       suitableBatteryType: row.suitableBatteryType ?? row.description ?? "",
       price: row.price ?? row.sellRate ?? "",
+      batteryType: row.batteryType ?? "",
+      modelType: row.modelType ?? row.batteryType ?? "",
     };
     return shouldShowOnHomeInvBatteryTab(mapped) ? tagHomeInvBatteryRow(mapped) : mapped;
   });
@@ -1477,7 +1483,7 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
 
     let refetchedRows = [];
     try {
-      refetchedRows = await refetchActiveTabRows({ bustCache: true, keepExistingOnEmpty: true });
+      refetchedRows = await refetchActiveTabRows({ bustCache: true, keepExistingOnEmpty: savedCount === 0 });
     } catch (refetchErr) {
       console.warn("[inventory] post-upload refetch failed:", refetchErr.message);
       if (Array.isArray(res.categoryRows) && res.categoryRows.length) {
@@ -1491,6 +1497,9 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
         : Array.isArray(res.categoryRows) && res.categoryRows.length
           ? mapInventoryFromServer(res.categoryRows)
           : [];
+    if (sourceAfterUpload.length && refetchedRows.length === 0) {
+      applyCategoryRowsToView(res.categoryRows, res.inventory);
+    }
 
     const uploadBrands = Array.isArray(res.uploadedBrands) ? res.uploadedBrands : [];
     // Stay on the brand chip used for upload; only fall back to All when chip was All / Other.
@@ -2809,7 +2818,7 @@ function Inventory({ inventory, setInventory, apiOnline, setApiOnline, modal, se
                         {cap}
                       </td>
                       <td>
-                        <span className="badge badge-blue">{item.type}</span>
+                        <span className="badge badge-blue">{String(item.batteryType || "").trim() || "—"}</span>
                       </td>
                       <td style={{ color: "#6b7280" }}>{item.weight != null && item.weight !== "" ? item.weight : "—"}</td>
                       <td style={{ color: "#6b7280" }}>₹{Number(item.scrapRate || 0).toLocaleString()}</td>
@@ -2981,8 +2990,8 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
       window.alert("Battery Model Number is required.");
       return;
     }
-    if (isHomeInvBatForm && !String(form.batteryType || "").trim()) {
-      window.alert("Battery Type is required (e.g. Tubular, Flat Plate).");
+    if (isHomeInvBatForm && !String(form.modelType || form.batteryType || "").trim()) {
+      window.alert("Model Type is required (e.g. Tall Tubular, Flat Plate).");
       return;
     }
     if (
@@ -3090,7 +3099,8 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
       batteryBossPrice: Number(form.batteryBossPrice) || 0,
       comboId: String(form.comboId || "").trim(),
       inverterModel: String(form.inverterModel || "").trim(),
-      batteryType: String(form.batteryType || "").trim(),
+      batteryType: String(form.batteryType || form.modelType || "").trim(),
+      modelType: String(form.modelType || form.batteryType || "").trim(),
       warranty: String(form.warranty || "").trim(),
       suitableFor: String(form.suitableFor || "").trim(),
       comboCategory: String(form.comboCategory || "").trim(),
@@ -3238,8 +3248,16 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
                   <input className="form-input" type="number" value={form.weight} onChange={(e) => set("weight", e.target.value)} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Battery type</label>
-                  <input className="form-input" value={form.batteryType} onChange={(e) => set("batteryType", e.target.value)} placeholder="Tubular, flat…" />
+                  <label className="form-label">Model Type</label>
+                  <input
+                    className="form-input"
+                    value={form.modelType || form.batteryType}
+                    onChange={(e) => {
+                      set("modelType", e.target.value);
+                      set("batteryType", e.target.value);
+                    }}
+                    placeholder="Tall Tubular, Short Tubular…"
+                  />
                 </div>
               </div>
               <div className="form-group">
@@ -3601,22 +3619,46 @@ function InventoryModal({ item, editingMongoId = null, defaultTypeWhenAdding = "
               </div>
               <div className="grid-3">
                 <div className="form-group">
-                  <label className="form-label">TYPE</label>
+                  <label className="form-label">{isAutomotiveBatteryForm ? "Category" : "TYPE"}</label>
                   <select className="form-select" value={form.type} onChange={e => set("type", e.target.value)}>
                     {INVENTORY_FORM_TYPES.map((t) => (
                       <option key={t}>{t}</option>
                     ))}
                   </select>
                 </div>
+                {isAutomotiveBatteryForm ? (
+                  <div className="form-group">
+                    <label className="form-label">Type</label>
+                    <input
+                      className="form-input"
+                      value={form.batteryType}
+                      onChange={(e) => set("batteryType", e.target.value)}
+                      placeholder="DIN, JIS, VRLA…"
+                    />
+                  </div>
+                ) : (
+                  <div className="form-group">
+                    <label className="form-label">Weight</label>
+                    <input className="form-input" type="number" value={form.weight} onChange={e => set("weight", e.target.value)} placeholder="10" />
+                  </div>
+                )}
                 <div className="form-group">
-                  <label className="form-label">Weight</label>
-                  <input className="form-input" type="number" value={form.weight} onChange={e => set("weight", e.target.value)} placeholder="10" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Scrap Rate (₹)</label>
-                  <input className="form-input" type="number" value={form.scrapRate} onChange={e => set("scrapRate", e.target.value)} placeholder="1080" />
+                  <label className="form-label">{isAutomotiveBatteryForm ? "Weight" : "Scrap Rate (₹)"}</label>
+                  <input
+                    className="form-input"
+                    type="number"
+                    value={isAutomotiveBatteryForm ? form.weight : form.scrapRate}
+                    onChange={(e) => set(isAutomotiveBatteryForm ? "weight" : "scrapRate", e.target.value)}
+                    placeholder={isAutomotiveBatteryForm ? "10" : "1080"}
+                  />
                 </div>
               </div>
+              {isAutomotiveBatteryForm ? (
+                <div className="form-group">
+                  <label className="form-label">Scrap Rate (₹)</label>
+                  <input className="form-input" type="number" value={form.scrapRate} onChange={(e) => set("scrapRate", e.target.value)} placeholder="1080" />
+                </div>
+              ) : null}
               <div className="grid-3">
                 <div className="form-group">
                   <label className="form-label">Dp + GST (₹)</label>

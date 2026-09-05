@@ -31,10 +31,12 @@ const COLUMN_MAP = {
     "item code",
   ],
   brand: ["brand", "manufacturer", "make"],
-  batteryType: ["battery type", "batt type", "cell type"],
+  batteryType: ["type", "battery type", "product type", "batt type", "cell type"],
+  modelType: ["model type", "modeltype"],
   type: [
-    "type",
     "category",
+    "product category",
+    "vehicle type",
     "inverter+battery",
     "inverter battery",
     "inv+battery",
@@ -159,15 +161,51 @@ export function cellString(val) {
   return normalizePipesForSpec(String(val).trim());
 }
 
+function isInventoryCategoryLabel(value) {
+  const t = String(value ?? "").trim().toLowerCase();
+  return (
+    t === "car" ||
+    t === "bike" ||
+    t === "truck" ||
+    t === "inverter" ||
+    t === "inverter+battery" ||
+    t === "inverter battery" ||
+    t === "home inverter battery" ||
+    t === "lithium ion battery" ||
+    t === "trolley" ||
+    t === "car battery" ||
+    t === "bike battery"
+  );
+}
+
+function excelProductTypeFromRow(item) {
+  const fromAttr = String(item?.batteryType ?? "").trim();
+  if (fromAttr && !isInventoryCategoryLabel(fromAttr)) return fromAttr;
+  const fromType = String(item?.type ?? "").trim();
+  if (fromType && !isInventoryCategoryLabel(fromType)) return fromType;
+  return "";
+}
+
+function excelModelTypeFromRow(item) {
+  return String(item?.modelType ?? "").trim();
+}
+
 function findColumnKey(header, importType) {
   const h = normalizeHeader(header);
   if (!h) return null;
+
+  if (h === "model type" || h === "modeltype") return "modelType";
+  if (h === "type" || h === "product type") return "batteryType";
 
   if (looksLikePipeCapacitySpec(h)) return "productCapacity";
 
   if (isInverterBatterySection(importType)) {
     for (const { key, aliases } of COMBO_COLUMN_MAP_ORDERED) {
       for (const a of aliases) {
+        if (a === "type" || a === "model") {
+          if (h === a) return key;
+          continue;
+        }
         if (!a) continue;
         if (h === a) return key;
         if (!h.includes(a)) continue;
@@ -241,11 +279,15 @@ function findColumnKey(header, importType) {
     if (key === "newRateWithOB" || key === "newRateWithoutOB") continue;
     for (const a of aliases) {
       if (!a) continue;
+      if (a === "type" || a === "model") {
+        if (h === a) return key;
+        continue;
+      }
       if (h === a || h.includes(a)) return key;
     }
   }
 
-  if (/\bmodel\b/.test(h) && !/\bmodel\s*(year|line)\b/.test(h)) return "model";
+  if (/\bmodel\b/.test(h) && !/\bmodel\s*(year|line|type)\b/.test(h) && h !== "modeltype") return "model";
 
   if (h === "ah" || h === "a.h." || h === "(ah)" || h === "nom ah" || h === "nom. ah") return "ah";
 
@@ -314,7 +356,7 @@ function repairPipeSpecCapacityRow(row) {
     if (!cap || cap === s || !looksLikePipeCapacitySpec(cap)) {
       next.productCapacity = s;
       if (k === "ah") next.ah = "";
-      if (k === "type") next.type = "Car";
+      if (k === "type" || k === "batteryType") next[k] = "";
       break;
     }
   }
@@ -690,12 +732,18 @@ function inferProductCapacityColumnIfUnlabeled(colToKey, labels, importType) {
   return next;
 }
 
-/** @param {string} [importType] When set (not "All"), every row gets this `type` (section segregation). */
+/** Inventory section tag only (Car / Bike / …). Excel Type is read via excelProductTypeFromRow. */
 function resolveBatteryType(item, inferredBike, importType) {
   const forced = String(importType ?? "").trim();
   if (forced && forced.toLowerCase() !== "all") return forced;
   const fromSheet = String(item.type || "").trim();
-  if (fromSheet) return fromSheet;
+  if (fromSheet && isInventoryCategoryLabel(fromSheet)) {
+    const t = fromSheet.toLowerCase();
+    if (t === "car" || t === "car battery") return "Car";
+    if (t === "bike" || t === "bike battery") return "Bike";
+    if (t === "truck") return "Truck";
+    return fromSheet;
+  }
   if (inferredBike) return "Bike";
   return "Car";
 }
@@ -1022,6 +1070,7 @@ export async function parseBatteryExcelFile(file, options = {}) {
             comboId: String(item.comboId || "").trim(),
             brand: brandOut,
             type: resolveBatteryType(item, inferredBike, importType),
+            modelType: isHomeInv ? excelModelTypeFromRow(item) : String(item.modelType || "").trim(),
             productCapacity,
             cd: isHomeInv || isInvOnlyInverter || isTrolley || isLithiumIon || !isInvOnly ? cd : undefined,
             dp: isHomeInv || isInvOnlyInverter || isTrolley || isLithiumIon || !isInvOnly ? dp : undefined,
@@ -1037,7 +1086,7 @@ export async function parseBatteryExcelFile(file, options = {}) {
             inverterVA: invVA,
             batteryType: isLithiumIon
               ? String(item.batteryType || "Lithium Ion").trim()
-              : String(item.batteryType || "").trim(),
+              : excelProductTypeFromRow(item),
             warranty: String(item.warranty || "").trim(),
             inverterModel: String(item.inverterModel || "").trim(),
             batteryModel: battModelStored,
@@ -1124,7 +1173,8 @@ export function mergeBatteriesIntoInventory(inventory, batteries) {
       if (row.inverterModel != null) existing.inverterModel = row.inverterModel;
       if (row.batteryModel != null) existing.batteryModel = row.batteryModel;
       if (row.inverterVA != null) existing.inverterVA = row.inverterVA;
-      if (row.batteryType != null) existing.batteryType = row.batteryType;
+      if (row.batteryType) existing.batteryType = row.batteryType;
+      if (row.modelType) existing.modelType = row.modelType;
       if (row.warranty != null) existing.warranty = row.warranty;
       if (row.backupHours != null) existing.backupHours = row.backupHours;
       if (row.backupSupport != null) existing.backupSupport = row.backupSupport;
@@ -1149,6 +1199,7 @@ export function mergeBatteriesIntoInventory(inventory, batteries) {
         ah: row.ah,
         inverterVA: row.inverterVA ?? 0,
         batteryType: row.batteryType ?? "",
+        modelType: row.modelType ?? "",
         warranty: row.warranty ?? "",
         inverterModel: row.inverterModel ?? "",
         batteryModel: row.batteryModel ?? "",

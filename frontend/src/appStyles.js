@@ -255,5 +255,6 @@ export const css = `
   .ocr-conf.ok { color: #047857; }
   .ocr-conf.low { color: #b45309; }
   .ocr-low .form-input { border-color: #f59e0b; background: #fffbeb; }
+  .ocr-row-review td { background: #fffbeb; }
   .ocr-preview { position: sticky; top: 12px; }
 `;
